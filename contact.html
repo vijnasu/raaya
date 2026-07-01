@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAAYA — Contact</title>
+<link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+
+<header id="hdr"><div class="wrap"><nav>
+  <a href="index.html" class="brand">RAAYA<small data-i18n="brand_sub">POLITICAL STRATEGY</small></a>
+  <div class="navlinks" id="nav">
+    <a class="link" href="index.html" data-i18n="nav_home">Home</a>
+    <a class="link" href="services.html" data-i18n="nav_services">Services</a>
+    <a class="link" href="approach.html" data-i18n="nav_approach">Approach</a>
+    <a class="link" href="about.html" data-i18n="nav_about">About</a>
+    <a class="link active" href="contact.html" data-i18n="nav_contact">Contact</a>
+    <div class="langsw"></div>
+    <a class="btn btn-gold" href="#form" data-i18n="cta_book">Book a Strategy Call</a>
+  </div>
+  <button class="menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰</button>
+</nav></div></header>
+
+<section class="pagehero">
+  <div class="wrap">
+    <span class="kicker" data-i18n="cta_k">Let's Talk</span>
+    <h1 data-i18n="ct_hero_h">Book a confidential strategy call.</h1>
+    <p data-i18n="ct_hero_p"></p>
+  </div>
+</section>
+
+<section id="form">
+  <div class="wrap">
+    <div class="formwrap">
+      <form class="form reveal" onsubmit="return raayaSend(event)">
+        <label data-i18n="f_name">Full name</label>
+        <input id="f_name" type="text" required>
+        <label data-i18n="f_role">You are a…</label>
+        <select id="f_role">
+          <option data-i18n="f_role_cand">Candidate</option>
+          <option data-i18n="f_role_party">Party / organisation</option>
+          <option data-i18n="f_role_leader">Public leader</option>
+          <option data-i18n="f_role_other">Other</option>
+        </select>
+        <label data-i18n="f_constituency">Constituency / region</label>
+        <input id="f_const" type="text">
+        <label data-i18n="f_email">Email</label>
+        <input id="f_email" type="email" required>
+        <label data-i18n="f_phone">Phone</label>
+        <input id="f_phone" type="text">
+        <label data-i18n="f_service">Service of interest</label>
+        <select id="f_service">
+          <option data-i18n="svc1_h">Ground Pulse</option>
+          <option data-i18n="svc2_h">Candidate Blueprint</option>
+          <option data-i18n="svc3_h">Campaign Command</option>
+          <option data-i18n="svc4_h">Digital Mandate</option>
+          <option data-i18n="svc5_h">War Room</option>
+          <option data-i18n="svc6_h">Governance Connect</option>
+        </select>
+        <label data-i18n="f_message">Your message</label>
+        <textarea id="f_msg"></textarea>
+        <button type="submit" class="btn btn-gold" data-i18n="f_submit">Send Confidential Enquiry</button>
+        <p class="disc" data-i18n="ct_note" style="margin-top:12px;color:var(--muted);"></p>
+      </form>
+
+      <div class="contactcard reveal">
+        <h3 data-i18n="ct_card_h">What to expect</h3>
+        <div data-i18n="ct_expect"></div>
+        <div style="margin-top:22px;">
+          <div class="kicker" style="color:var(--gold);" data-i18n="ct_email_label">Email us</div>
+          <a href="mailto:contact@raaya.in" style="color:#fff;font-size:17px;font-weight:700;">contact@raaya.in</a>
+        </div>
+        <p style="margin-top:20px;font-size:14px;" data-i18n="ct_conf"></p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer><div class="wrap">
+  <div class="fgridcol">
+    <div><div class="brand">RAAYA<small data-i18n="brand_sub">POLITICAL STRATEGY</small></div><p data-i18n="foot_about"></p></div>
+    <div><h5 data-i18n="foot_services_h">Services</h5><ul>
+      <li><a href="services.html" data-i18n="svc1_h">Ground Pulse</a></li>
+      <li><a href="services.html" data-i18n="svc2_h">Candidate Blueprint</a></li>
+      <li><a href="services.html" data-i18n="svc3_h">Campaign Command</a></li>
+      <li><a href="services.html" data-i18n="svc4_h">Digital Mandate</a></li>
+      <li><a href="services.html" data-i18n="svc5_h">War Room</a></li></ul></div>
+    <div><h5 data-i18n="foot_firm_h">Firm</h5><ul>
+      <li><a href="about.html" data-i18n="foot_link_why">Why RAAYA</a></li>
+      <li><a href="approach.html" data-i18n="foot_link_method">Our Method</a></li>
+      <li><a href="approach.html" data-i18n="foot_link_approach">Approach</a></li>
+      <li><a href="contact.html" data-i18n="foot_link_contact">Contact</a></li></ul></div>
+    <div><h5 data-i18n="foot_consult_h">Confidential Consultation</h5><ul>
+      <li><a href="mailto:contact@raaya.in">contact@raaya.in</a></li>
+      <li><a href="#form" data-i18n="cta_book">Book a Strategy Call</a></li></ul>
+      <p class="disc" data-i18n="foot_disc"></p></div>
+  </div>
+  <div class="fbar"><span data-i18n="foot_rights">© 2026 RAAYA</span><span data-i18n="foot_tag">People. Perception. Power.</span></div>
+</div></footer>
+
+<script src="assets/i18n.js"></script>
+<script>
+  const io=new IntersectionObserver((es)=>{es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}});},{threshold:.08});
+  document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+  addEventListener('scroll',()=>{document.getElementById('hdr').style.boxShadow=scrollY>20?'0 6px 24px rgba(0,0,0,.25)':'none';});
+  function raayaSend(e){
+    e.preventDefault();
+    const g=id=>document.getElementById(id).value;
+    const subject=encodeURIComponent("Confidential Strategy Enquiry — "+(g('f_name')||''));
+    const body=encodeURIComponent(
+      "Name: "+g('f_name')+"\nRole: "+document.getElementById('f_role').selectedOptions[0].text+
+      "\nConstituency/Region: "+g('f_const')+"\nEmail: "+g('f_email')+"\nPhone: "+g('f_phone')+
+      "\nService of interest: "+document.getElementById('f_service').selectedOptions[0].text+
+      "\n\nMessage:\n"+g('f_msg'));
+    window.location.href="mailto:contact@raaya.in?subject="+subject+"&body="+body;
+    return false;
+  }
+</script>
+</body>
+</html>
