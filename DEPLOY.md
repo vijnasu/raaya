@@ -13,10 +13,12 @@ Pick **one** of the two methods below. Both take ~3 minutes.
    (Public is required for free Pages; you can delete it later).
 2. On the new repo page, click **“uploading an existing file.”**
 3. Drag in **all files from the `raaya-website/` folder** — i.e. `index.html`,
-   `services.html`, `approach.html`, `about.html`, `contact.html`, `.nojekyll`,
-   and the **`assets/`** folder (with `style.css` and `i18n.js`).
-   - Tip: unzip **`raaya-website.zip`** first and drag its *contents* (not the
-     outer folder) so `index.html` sits at the repo root.
+   `services.html`, `approach.html`, `about.html`, `contact.html`,
+   `console.html`, `.nojekyll`, and the **`assets/`** folder (with `style.css`,
+   `i18n.js`, `console-i18n.js`, `firebase-config.js`, `ka2023.js`,
+   `ka_ls2024.js`).
+   - Tip: drag the folder's *contents* (not the outer folder) so `index.html`
+     sits at the repo root.
 4. Click **Commit changes**.
 5. Go to **Settings → Pages**. Under **Build and deployment → Source**, choose
    **Deploy from a branch**, select branch **`main`** and folder **`/ (root)`**,
@@ -56,6 +58,21 @@ Keep it in the upload.
 - **Fastest:** Settings → Pages → set Source to **None** (unpublishes instantly).
 - **Full removal:** Settings → scroll to **Danger Zone → Delete this repository**.
 - Or make the repo **Private** (Pages then stops serving on the free plan).
+
+## Leader Console + Firebase (one extra step)
+If cloud sync is enabled (`assets/firebase-config.js` has real keys), Firebase
+must be told to trust your new site's domain or **sign-in will fail** with
+`auth/unauthorized-domain`:
+
+1. Firebase console → **Authentication → Settings → Authorized domains**.
+2. Click **Add domain** and enter your Pages host, e.g. `USERNAME.github.io`.
+
+Notes:
+- The apiKey in `firebase-config.js` is safe to publish — access is enforced
+  by the Firestore security rules and your user accounts (see README.md).
+- Client data is NOT in the uploaded files; it lives in Firestore (or in each
+  browser's localStorage if cloud is not configured).
+- The Console works offline after first load and syncs when back online.
 
 ## Custom domain (optional, later)
 Add a `CNAME` file with your domain and point a DNS `CNAME` record to
