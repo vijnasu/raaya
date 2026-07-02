@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAAYA Console — Leader Management System</title>
+<meta name="description" content="RAAYA Leader Console: onboard political leaders, plan campaigns, track execution and budgets.">
+<link rel="stylesheet" href="assets/style.css">
+<style>
+/* ===== Console-specific styles (extends brand system) ===== */
+.con-hero{background:radial-gradient(900px 480px at 85% -20%,#1b3a63,var(--navy) 60%);color:#fff;padding:130px 0 46px;}
+.con-hero h1{font-size:40px;margin:10px 0 8px;}
+.con-hero p{color:var(--ice);font-size:18px;max-width:70ch;}
+.con-body{padding:44px 0 90px;background:var(--mist);min-height:60vh;}
+.card{background:#fff;border:1px solid var(--line);border-radius:14px;padding:30px;margin-bottom:22px;box-shadow:0 2px 10px rgba(11,31,58,.05);}
+.card h2{font-size:24px;margin-bottom:6px;}
+.card .sub{color:var(--muted);font-size:15.5px;margin-bottom:20px;}
+/* wizard progress */
+.wsteps{display:flex;gap:8px;margin:18px 0 26px;flex-wrap:wrap;}
+.wstep{flex:1;min-width:120px;text-align:center;padding:10px 6px;border-radius:8px;background:#fff;border:1px solid var(--line);font-size:13.5px;font-weight:700;color:var(--muted);}
+.wstep.on{background:var(--navy);color:#fff;border-color:var(--navy);}
+.wstep.done{background:var(--gold);color:var(--navy);border-color:var(--gold);}
+/* forms */
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:16px 20px;}
+.fgrid .full{grid-column:1/-1;}
+@media(max-width:700px){.fgrid{grid-template-columns:1fr;}}
+label{display:block;font-size:14px;font-weight:700;color:var(--navy);margin-bottom:5px;letter-spacing:.3px;}
+input,select,textarea{width:100%;padding:12px 14px;border:1.5px solid var(--line);border-radius:8px;font-size:15.5px;font-family:inherit;background:#fff;color:var(--ink);}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
+.hint{font-size:13px;color:var(--muted);margin-top:4px;}
+/* option tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:12px;}
+.tile{border:1.5px solid var(--line);border-radius:10px;padding:14px 16px;cursor:pointer;background:#fff;transition:.15s;}
+.tile:hover{border-color:var(--gold);}
+.tile.sel{border-color:var(--gold);background:#FDF6E9;box-shadow:0 0 0 1px var(--gold);}
+.tile h4{font-size:15.5px;color:var(--navy);}
+.tile p{font-size:13px;color:var(--muted);line-height:1.45;margin-top:3px;}
+.wnav{display:flex;justify-content:space-between;margin-top:26px;gap:12px;}
+.err{color:#B3261E;font-size:14px;font-weight:700;margin-top:12px;display:none;}
+/* leader list */
+.lrow{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+.lrow:last-child{border-bottom:none;}
+.lrow .nm{font-weight:700;color:var(--navy);font-size:17px;}
+.lrow .meta{font-size:14px;color:var(--muted);}
+.badge{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:700;background:var(--navy);color:#fff;margin-left:8px;}
+.badge.g{background:var(--gold);color:var(--navy);}
+.btn-sm{padding:9px 16px;font-size:14px;border-radius:7px;}
+.summ dt{font-weight:700;color:var(--navy);font-size:14px;margin-top:12px;}
+.summ dd{font-size:15.5px;color:var(--ink);}
+</style>
+</head>
+<body>
+
+<header id="hdr"><div class="wrap"><nav>
+  <a href="index.html" class="brand">RAAYA<small>POLITICAL STRATEGY</small></a>
+  <div class="navlinks" id="nav">
+    <a class="link" href="index.html">Home</a>
+    <a class="link" href="services.html">Services</a>
+    <a class="link" href="approach.html">Approach</a>
+    <a class="link" href="about.html">About</a>
+    <a class="link active" href="console.html">Console</a>
+    <a class="link" href="contact.html">Contact</a>
+  </div>
+  <button class="menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰</button>
+</nav></div></header>
+
+<section class="con-hero"><div class="wrap">
+  <span class="kicker">RAAYA CONSOLE</span>
+  <h1>Leader Management System</h1>
+  <p>Onboard a leader, define the electoral target, choose RAAYA services — and get a plan, timeline, execution tracker and budget. All data stays in this browser.</p>
+</div></section>
+
+<div class="con-body"><div class="wrap" id="app"></div></div>
+
+<script>
+/* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
+const DB_KEY = 'raaya_leaders_v1';
+const db = {
+  all(){ try{ return JSON.parse(localStorage.getItem(DB_KEY))||[] }catch(e){ return [] } },
+  save(list){ localStorage.setItem(DB_KEY, JSON.stringify(list)); },
+  get(id){ return this.all().find(l=>l.id===id); },
+  upsert(rec){ const list=this.all(); const i=list.findIndex(l=>l.id===rec.id); if(i>=0)list[i]=rec; else list.push(rec); this.save(list); },
+  remove(id){ this.save(this.all().filter(l=>l.id!==id)); }
+};
+
+const ELECTIONS = [
+  ['lok_sabha','Lok Sabha (MP)','National general election — parliamentary constituency'],
+  ['vidhan_sabha','Vidhan Sabha (MLA)','State assembly election'],
+  ['mlc','MLC / Council','Legislative council — graduates, teachers, local bodies'],
+  ['zilla','Zilla / Taluk Panchayat','District & taluk level rural bodies'],
+  ['municipal','Municipal / Corporation','Urban local body — corporator, mayor track'],
+  ['gram','Gram Panchayat','Village-level election'],
+  ['coop','Co-operative / Society','APMC, co-op banks, societies'],
+  ['party','Party Position','Internal party post — district president, state office']
+];
+const SERVICES = [
+  ['gp','Ground Pulse','Voter intelligence, booth-level surveys, caste/community mapping'],
+  ['cb','Candidate Blueprint','Personal brand, positioning, image & narrative building'],
+  ['cc','Campaign Command','End-to-end campaign management & field organisation'],
+  ['dm','Digital Mandate','Social media, WhatsApp networks, digital influence'],
+  ['wr','War Room','24×7 monitoring, rapid response, opposition tracking'],
+  ['gc','Governance Connect','Constituency service, grievance handling, delivery tracking'],
+  ['as','Astro-Strategy Advisory','Muhurta calendar, timing of announcements & filings'],
+  ['mr','Media Relations','Press strategy, interviews, local media management']
+];
+const STATES = ['Karnataka','Andhra Pradesh','Telangana','Tamil Nadu','Kerala','Maharashtra','Goa','Other'];
+
+let W = { step:0, data:{} };   // wizard state
+const $ = s=>document.querySelector(s);
+const esc = s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- Home: leader list ---------- */
+function renderHome(){
+  const leaders = db.all();
+  let rows = leaders.length ? leaders.map(l=>`
+    <div class="lrow">
+      <div>
+        <div class="nm">${esc(l.name)} <span class="badge g">${esc(elLabel(l.electionType))}</span>
+          ${l.party?`<span class="badge">${esc(l.party)}</span>`:''}</div>
+        <div class="meta">${esc(l.constituency)}, ${esc(l.state)} · Election: ${esc(l.electionDate||'TBD')} · ${l.services.length} services</div>
+      </div>
+      <div>
+        <button class="btn btn-navy btn-sm" onclick="viewLeader('${l.id}')">Open Profile</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="delLeader('${l.id}')">Remove</button>
+      </div>
+    </div>`).join('')
+    : `<p style="color:var(--muted)">No leaders onboarded yet. Start with your first onboarding below.</p>`;
+  $('#app').innerHTML = `
+    <div class="card">
+      <h2>Onboarded Leaders</h2>
+      <div class="sub">Every leader gets a profile, plan, tracker and budget.</div>
+      ${rows}
+      <div style="margin-top:22px"><button class="btn btn-gold" onclick="startWizard()">+ Onboard New Leader</button></div>
+    </div>`;
+}
+function elLabel(k){ const e=ELECTIONS.find(e=>e[0]===k); return e?e[1]:k; }
+function delLeader(id){ if(confirm('Remove this leader and all their data?')){ db.remove(id); renderHome(); } }
+
+/* ---------- Wizard ---------- */
+const STEP_NAMES = ['Leader Profile','Election Target','Constituency','RAAYA Services','Review & Confirm'];
+function startWizard(){ W={step:0,data:{services:[]}}; renderWizard(); }
+function progress(){
+  return `<div class="wsteps">`+STEP_NAMES.map((n,i)=>
+    `<div class="wstep ${i<W.step?'done':i===W.step?'on':''}">${i+1}. ${n}</div>`).join('')+`</div>`;
+}
+function wnav(back=true,label='Continue'){
+  return `<div class="err" id="werr"></div><div class="wnav">
+    ${back?`<button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--muted)" onclick="wBack()">← Back</button>`:`<button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--muted)" onclick="renderHome()">Cancel</button>`}
+    <button class="btn btn-gold" onclick="wNext()">${label}</button></div>`;
+}
+function fail(msg){ const e=$('#werr'); e.textContent=msg; e.style.display='block'; }
+
+function renderWizard(){
+  const d=W.data;
+  const bodies=[
+`<div class="card"><h2>Leader Profile</h2><div class="sub">Who are we onboarding?</div>
+ <div class="fgrid">
+  <div><label>Full Name *</label><input id="f_name" value="${esc(d.name)}"></div>
+  <div><label>Party / Affiliation</label><input id="f_party" value="${esc(d.party)}" placeholder="e.g. INC, BJP, JD(S), Independent"></div>
+  <div><label>Phone</label><input id="f_phone" value="${esc(d.phone)}"></div>
+  <div><label>Email</label><input id="f_email" value="${esc(d.email)}"></div>
+  <div><label>Current Position</label><input id="f_pos" value="${esc(d.position)}" placeholder="e.g. Sitting MLA, Youth leader, First-time aspirant"></div>
+  <div><label>Political Experience (years)</label><input id="f_exp" type="number" min="0" value="${esc(d.experience)}"></div>
+  <div class="full"><label>Key Strengths / Notes</label><textarea id="f_notes" rows="2" placeholder="Community influence, existing network, public image...">${esc(d.notes)}</textarea></div>
+ </div>${wnav(false)}</div>`,
+
+`<div class="card"><h2>Election Target</h2><div class="sub">Which election is the leader targeting?</div>
+ <div class="tiles" id="eltiles">${ELECTIONS.map(e=>
+   `<div class="tile ${d.electionType===e[0]?'sel':''}" onclick="pickEl('${e[0]}')"><h4>${e[1]}</h4><p>${e[2]}</p></div>`).join('')}</div>
+ <div class="fgrid" style="margin-top:20px">
+  <div><label>Expected Election Date</label><input id="f_edate" type="date" value="${esc(d.electionDate)}"><div class="hint">Approximate is fine — drives the timeline in Step 2 of the build.</div></div>
+  <div><label>Contest Status</label><select id="f_status">
+    ${['Ticket confirmed','Seeking ticket','Exploring / undecided','Incumbent defending seat'].map(o=>`<option ${d.status===o?'selected':''}>${o}</option>`).join('')}
+  </select></div>
+ </div>${wnav()}</div>`,
+
+`<div class="card"><h2>Constituency</h2><div class="sub">Where is the battle?</div>
+ <div class="fgrid">
+  <div><label>State *</label><select id="f_state">${STATES.map(s=>`<option ${d.state===s?'selected':''}>${s}</option>`).join('')}</select></div>
+  <div><label>Constituency / Ward Name *</label><input id="f_const" value="${esc(d.constituency)}" placeholder="e.g. Chikkamagaluru, Ward 12 — Rajajinagar"></div>
+  <div><label>Approx. Voter Count</label><input id="f_voters" type="number" min="0" value="${esc(d.voters)}"></div>
+  <div><label>Urban / Rural Mix</label><select id="f_mix">${['Mostly rural','Mostly urban','Mixed / semi-urban'].map(o=>`<option ${d.mix===o?'selected':''}>${o}</option>`).join('')}</select></div>
+  <div class="full"><label>Main Rival(s) & Local Issues</label><textarea id="f_rivals" rows="2" placeholder="Key opponents, dominant issues (water, roads, jobs, community equations)...">${esc(d.rivals)}</textarea></div>
+ </div>${wnav()}</div>`,
+
+`<div class="card"><h2>RAAYA Services Required</h2><div class="sub">Select every service the campaign needs — this shapes the plan and budget.</div>
+ <div class="tiles">${SERVICES.map(s=>
+   `<div class="tile ${d.services.includes(s[0])?'sel':''}" onclick="toggleSvc('${s[0]}')"><h4>${s[1]}</h4><p>${s[2]}</p></div>`).join('')}</div>
+ <div class="fgrid" style="margin-top:20px">
+  <div><label>Indicative Budget Band (₹)</label><select id="f_budget">
+   ${['Under 10 Lakh','10–50 Lakh','50 Lakh – 2 Crore','2–10 Crore','Above 10 Crore','To be discussed'].map(o=>`<option ${d.budgetBand===o?'selected':''}>${o}</option>`).join('')}
+  </select></div>
+  <div><label>Engagement Start</label><select id="f_start">${['Immediately','Within 1 month','Within 3 months','After ticket confirmation'].map(o=>`<option ${d.start===o?'selected':''}>${o}</option>`).join('')}</select></div>
+ </div>${wnav()}</div>`,
+
+`<div class="card"><h2>Review & Confirm</h2><div class="sub">Check the details before creating the leader profile.</div>
+ <dl class="summ">
+  <dt>Leader</dt><dd>${esc(d.name)} — ${esc(d.position||'—')} (${esc(d.party||'No party listed')}), ${esc(d.experience||0)} yrs experience</dd>
+  <dt>Contact</dt><dd>${esc(d.phone||'—')} · ${esc(d.email||'—')}</dd>
+  <dt>Election</dt><dd>${esc(elLabel(d.electionType))} — ${esc(d.status)} · Date: ${esc(d.electionDate||'TBD')}</dd>
+  <dt>Constituency</dt><dd>${esc(d.constituency)}, ${esc(d.state)} · ${esc(d.mix||'')} · ${d.voters?Number(d.voters).toLocaleString('en-IN')+' voters':'voter count TBD'}</dd>
+  <dt>Rivals & Issues</dt><dd>${esc(d.rivals||'—')}</dd>
+  <dt>RAAYA Services (${d.services.length})</dt><dd>${d.services.map(k=>SERVICES.find(s=>s[0]===k)[1]).join(' · ')||'—'}</dd>
+  <dt>Budget Band</dt><dd>₹ ${esc(d.budgetBand)} · Start: ${esc(d.start)}</dd>
+ </dl>${wnav(true,'✓ Create Leader Profile')}</div>`
+  ];
+  $('#app').innerHTML = progress()+bodies[W.step];
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+function pickEl(k){ W.data.electionType=k; renderWizard(); }
+function toggleSvc(k){ const s=W.data.services; const i=s.indexOf(k); i>=0?s.splice(i,1):s.push(k); renderWizard(); }
+function wBack(){ collect(); W.step--; renderWizard(); }
+function collect(){
+  const g=id=>{const el=document.getElementById(id);return el?el.value.trim():undefined};
+  const d=W.data;
+  if(W.step===0){d.name=g('f_name');d.party=g('f_party');d.phone=g('f_phone');d.email=g('f_email');d.position=g('f_pos');d.experience=g('f_exp');d.notes=g('f_notes');}
+  if(W.step===1){d.electionDate=g('f_edate');d.status=g('f_status');}
+  if(W.step===2){d.state=g('f_state');d.constituency=g('f_const');d.voters=g('f_voters');d.mix=g('f_mix');d.rivals=g('f_rivals');}
+  if(W.step===3){d.budgetBand=g('f_budget');d.start=g('f_start');}
+}
+function wNext(){
+  collect(); const d=W.data;
+  if(W.step===0 && !d.name) return fail('Leader name is required.');
+  if(W.step===1 && !d.electionType) return fail('Select the election the leader is targeting.');
+  if(W.step===2 && !d.constituency) return fail('Constituency name is required.');
+  if(W.step===3 && d.services.length===0) return fail('Select at least one RAAYA service.');
+  if(W.step===4){
+    d.id = d.id || 'L'+Date.now();
+    d.createdAt = d.createdAt || new Date().toISOString();
+    d.tasks = d.tasks||[]; d.budget = d.budget||[];   // used by later build steps
+    db.upsert(d); viewLeader(d.id); return;
+  }
+  W.step++; renderWizard();
+}
+
+/* ---------- Leader profile view (extended in later build steps) ---------- */
+function viewLeader(id){
+  const l=db.get(id); if(!l) return renderHome();
+  $('#app').innerHTML = `
+   <div class="card">
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:start">
+      <div><h2>${esc(l.name)} <span class="badge g">${esc(elLabel(l.electionType))}</span></h2>
+      <div class="sub">${esc(l.constituency)}, ${esc(l.state)} · ${esc(l.status)} · Election: ${esc(l.electionDate||'TBD')}</div></div>
+      <div>
+        <button class="btn btn-navy btn-sm" onclick="editLeader('${l.id}')">Edit Details</button>
+        <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="renderHome()">← All Leaders</button>
+      </div>
+    </div>
+    <dl class="summ">
+      <dt>Services Engaged</dt><dd>${l.services.map(k=>SERVICES.find(s=>s[0]===k)[1]).join(' · ')}</dd>
+      <dt>Budget Band</dt><dd>₹ ${esc(l.budgetBand)} · Start: ${esc(l.start)}</dd>
+      <dt>Rivals & Issues</dt><dd>${esc(l.rivals||'—')}</dd>
+      <dt>Notes</dt><dd>${esc(l.notes||'—')}</dd>
+    </dl>
+   </div>
+   <div class="card"><h2>Campaign Plan & Timeline</h2><div class="sub">Coming in Build Step 2 — auto-generated phase-wise plan from this profile.</div></div>
+   <div class="card"><h2>Execution Tracker</h2><div class="sub">Coming in Build Step 3 — tasks, owners, status board.</div></div>
+   <div class="card"><h2>Budget</h2><div class="sub">Coming in Build Step 4 — planned vs actual spend by service.</div></div>`;
+  window.scrollTo(0,0);
+}
+function editLeader(id){ const l=db.get(id); W={step:0,data:JSON.parse(JSON.stringify(l))}; renderWizard(); }
+
+renderHome();
+</script>
+</body>
+</html>
