@@ -93,6 +93,25 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 .btab td.num,.btab th.num{text-align:right;font-variant-numeric:tabular-nums;}
 .btab td.over{color:#B3261E;font-weight:700;}
 .btab input.cell{padding:7px 9px;font-size:18.5px;max-width:130px;text-align:right;}
+/* booths */
+.lean{border:none;border-radius:20px;padding:5px 14px;font-size:15px;font-weight:700;cursor:pointer;min-width:96px;font-family:inherit;}
+.lean.strong{background:#1E7A3C;color:#fff;}
+.lean.swing{background:var(--gold);color:var(--navy);}
+.lean.weak{background:#B3261E;color:#fff;}
+.boothbar{display:flex;height:16px;border-radius:8px;overflow:hidden;border:1px solid var(--line);margin:6px 0 18px;}
+.binp{padding:7px 9px;font-size:16px;}
+/* print report */
+@media print{
+  header,.con-hero,.btn,.tdel,.taddgrid,input#impfile{display:none!important;}
+  .st{border:1px solid #999;background:none!important;color:#000!important;min-width:auto;}
+  .con-body{padding:0;background:#fff;}
+  .card{box-shadow:none;border:1px solid #bbb;page-break-inside:avoid;margin-bottom:14px;padding:18px;}
+  .phase{page-break-inside:avoid;}
+  .prheader{display:block!important;}
+}
+.prheader{display:none;border-bottom:3px solid var(--gold);padding-bottom:10px;margin-bottom:18px;}
+.prheader .b{font-family:Georgia,serif;font-size:26px;letter-spacing:4px;color:var(--navy);font-weight:700;}
+.prheader .t{font-size:15px;color:var(--muted);}
 </style>
 </head>
 <body>
@@ -105,7 +124,8 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
     <a class="link" href="approach.html">Approach</a>
     <a class="link" href="about.html">About</a>
     <a class="link active" href="console.html">Console</a>
-    <a class="link" href="contact.html">Contact</a>
+    <a class="link" href="contact.html" data-i18n="nav_contact">Contact</a>
+    <div class="langsw"></div>
   </div>
   <button class="menu-btn" onclick="document.getElementById('nav').classList.toggle('open')">☰</button>
 </nav></div></header>
@@ -118,18 +138,45 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 
 <div class="con-body"><div class="wrap" id="app"></div></div>
 
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="assets/firebase-config.js"></script>
+<script src="assets/i18n.js"></script>
+<script src="assets/console-i18n.js"></script>
 <script src="assets/ka2023.js"></script>
 <script src="assets/ka_ls2024.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
-const db = {
+const localdb = {
   all(){ try{ return JSON.parse(localStorage.getItem(DB_KEY))||[] }catch(e){ return [] } },
   save(list){ localStorage.setItem(DB_KEY, JSON.stringify(list)); },
-  get(id){ return this.all().find(l=>l.id===id); },
   upsert(rec){ const list=this.all(); const i=list.findIndex(l=>l.id===rec.id); if(i>=0)list[i]=rec; else list.push(rec); this.save(list); },
   remove(id){ this.save(this.all().filter(l=>l.id!==id)); }
 };
+/* CLOUD (Firestore) is used when firebase-config.js has real keys and the user is signed in.
+   Reads are served synchronously from an onSnapshot-fed cache so all render code stays unchanged. */
+let CLOUD = null; // {col, cache:[], user}
+const db = {
+  all(){ return CLOUD ? CLOUD.cache.slice() : localdb.all(); },
+  get(id){ return this.all().find(l=>l.id===id); },
+  upsert(rec){
+    if(CLOUD){ const i=CLOUD.cache.findIndex(l=>l.id===rec.id); i>=0?CLOUD.cache[i]=rec:CLOUD.cache.push(rec);
+      CLOUD.col.doc(rec.id).set(JSON.parse(JSON.stringify(rec))).catch(e=>alert('Cloud save failed: '+e.message)); }
+    else localdb.upsert(rec);
+  },
+  remove(id){
+    if(CLOUD){ CLOUD.cache=CLOUD.cache.filter(l=>l.id!==id);
+      CLOUD.col.doc(id).delete().catch(e=>alert('Cloud delete failed: '+e.message)); }
+    else localdb.remove(id);
+  },
+  save(list){ // bulk (used by import backup)
+    if(CLOUD){ CLOUD.cache=list.slice(); list.forEach(r=>CLOUD.col.doc(r.id).set(JSON.parse(JSON.stringify(r)))); }
+    else localdb.save(list);
+  }
+};
+function cloudConfigured(){ const c=window.FIREBASE_CONFIG; return c && !/PASTE_/.test(c.apiKey) && !/PASTE_/.test(c.projectId); }
 
 const ELECTIONS = [
   ['lok_sabha','Lok Sabha (MP)','National general election — parliamentary constituency'],
@@ -169,6 +216,7 @@ function leaderStats(l){
   return {days,tasks:tasks.length,done,late,planned,actual};
 }
 function renderHome(){
+  window.__rerender = renderHome;
   const leaders = db.all();
   const agg = leaders.map(leaderStats);
   const dash = leaders.length?`<div class="count">
@@ -202,6 +250,9 @@ function renderHome(){
     <div class="card">
       <h2>Onboarded Leaders</h2>
       <div class="sub">Every leader gets a profile, plan, tracker and budget.</div>
+      ${CLOUD?`<div class="tlnote">☁ Cloud sync ON — signed in as ${esc(CLOUD.user.email)} · data shared across your team's devices.
+        <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line);margin-left:8px" onclick="doLogout()">Sign out</button></div>`
+      :cloudConfigured()?'':`<div class="tlnote">💾 Local mode — data lives only in this browser. Paste your Firebase keys in assets/firebase-config.js to enable team cloud sync.</div>`}
       ${rows}
       <div style="margin-top:22px"><button class="btn btn-gold" onclick="startWizard()">+ Onboard New Leader</button>
       ${leaders.length?`<button class="btn btn-navy btn-sm" style="margin-left:10px" onclick="exportData()">⤒ Export backup (JSON)</button>
@@ -240,6 +291,7 @@ function wnav(back=true,label='Continue'){
 function fail(msg){ const e=$('#werr'); e.textContent=msg; e.style.display='block'; }
 
 function renderWizard(){
+  window.__rerender = ()=>{ try{collect();}catch(e){} renderWizard(); };
   const d=W.data;
   const bodies=[
 `<div class="card"><h2>Leader Profile</h2><div class="sub">Who are we onboarding?</div>
@@ -344,12 +396,15 @@ function wNext(){
 /* ---------- Leader profile view (extended in later build steps) ---------- */
 function viewLeader(id){
   const l=db.get(id); if(!l) return renderHome();
+  window.__rerender = ()=>viewLeader(id);
   $('#app').innerHTML = `
+   <div class="prheader"><span class="b">RAAYA</span> <span class="t">POLITICAL STRATEGY — CONFIDENTIAL CAMPAIGN BRIEF · ${esc(l.name)} · ${new Date().toLocaleDateString('en-IN',{day:'numeric',month:'long',year:'numeric'})}</span></div>
    <div class="card">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:start">
       <div><h2>${esc(l.name)} <span class="badge g">${esc(elLabel(l.electionType))}</span></h2>
       <div class="sub">${esc(l.constituency)}, ${esc(l.state)} · ${esc(l.status)} · Election: ${esc(l.electionDate||'TBD')}</div></div>
       <div>
+        <button class="btn btn-gold btn-sm" onclick="window.print()">🖨 Print Report / PDF</button>
         <button class="btn btn-navy btn-sm" onclick="editLeader('${l.id}')">Edit Details</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="renderHome()">← All Leaders</button>
       </div>
@@ -364,6 +419,7 @@ function viewLeader(id){
    ${renderIntel(l)}
    ${renderPlan(l)}
    ${renderTracker(l)}
+   ${renderBooths(l)}
    ${renderBudget(l)}`;
   window.scrollTo(0,0);
 }
@@ -534,6 +590,67 @@ function importPlan(id){
   if(!added) alert('All plan actions are already in the tracker.');
 }
 
+/* ---------- Booth-Level Module ---------- */
+/* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
+const LEANS=['strong','swing','weak'];
+const LEAN_LABEL={strong:'Strong',swing:'Swing',weak:'Weak'};
+
+function renderBooths(l){
+  const B=l.booths||[];
+  const cnt=k=>B.filter(b=>b.lean===k).length;
+  const vot=k=>B.filter(b=>b.lean===k).reduce((s,b)=>s+(+b.voters||0),0);
+  const totV=B.reduce((s,b)=>s+(+b.voters||0),0);
+  const noIC=B.filter(b=>!b.incharge).length;
+
+  const summary = B.length?`<div class="btotals">
+    <div class="cbox"><div class="n">${B.length}</div><div class="l">BOOTHS MAPPED · ${totV.toLocaleString('en-IN')} VOTERS</div></div>
+    <div class="cbox"><div class="n" style="color:#1E7A3C">${cnt('strong')}</div><div class="l">STRONG · ${vot('strong').toLocaleString('en-IN')} VOTERS</div></div>
+    <div class="cbox"><div class="n" style="color:var(--gold)">${cnt('swing')}</div><div class="l">SWING — WIN HERE · ${vot('swing').toLocaleString('en-IN')} VOTERS</div></div>
+    <div class="cbox"><div class="n" style="color:#B3261E">${cnt('weak')}</div><div class="l">WEAK · ${vot('weak').toLocaleString('en-IN')} VOTERS</div></div>
+  </div>
+  <div class="boothbar" title="Strong ${cnt('strong')} · Swing ${cnt('swing')} · Weak ${cnt('weak')}">
+    ${cnt('strong')?`<div style="flex:${cnt('strong')};background:#1E7A3C"></div>`:''}
+    ${cnt('swing')?`<div style="flex:${cnt('swing')};background:var(--gold)"></div>`:''}
+    ${cnt('weak')?`<div style="flex:${cnt('weak')};background:#B3261E"></div>`:''}
+  </div>
+  ${noIC?`<div class="tlnote">⚠ ${noIC} booth(s) have no in-charge assigned — turnout risk on poll day.</div>`:''}`:'';
+
+  const rows = B.map((b,i)=>`
+    <div class="trow">
+      <button class="lean ${b.lean}" onclick="cycleLean('${l.id}',${i})" title="Click to reclassify">${LEAN_LABEL[b.lean]}</button>
+      <span class="tt"><b>#${esc(b.no)}</b> ${esc(b.name)}</span>
+      <span class="tmeta">${(+b.voters||0).toLocaleString('en-IN')} voters</span>
+      <input class="binp" style="max-width:200px" placeholder="In-charge name" value="${esc(b.incharge||'')}"
+        onchange="setBooth('${l.id}',${i},'incharge',this.value)">
+      <button class="tdel" onclick="delBooth('${l.id}',${i})" title="Delete booth">✕</button>
+    </div>`).join('');
+
+  return `<div class="card"><h2>Booth Management</h2>
+    <div class="sub">Classify every booth: hold the strong, fight for the swing, watch the weak. The swing booths decide the seat.</div>
+    ${summary}${rows||'<p style="color:var(--muted)">No booths mapped yet — add them below.</p>'}
+    <div class="taddgrid">
+      <div><label>Booth No. &amp; Name *</label><input id="bo_name" placeholder="e.g. 42 — Govt School, Hosur Village"></div>
+      <div><label>Voters</label><input id="bo_voters" type="number" min="0"></div>
+      <div><label>Classification</label><select id="bo_lean">${LEANS.map(k=>`<option value="${k}">${LEAN_LABEL[k]}</option>`).join('')}</select></div>
+      <div><label>In-charge</label><input id="bo_ic"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="addBooth('${l.id}')">+ Add</button></div>
+    </div>
+  </div>`;
+}
+function addBooth(id){
+  const l=db.get(id); const raw=$('#bo_name').value.trim();
+  if(!raw) return alert('Booth number & name is required.');
+  const m=raw.match(/^(\d+)\s*[—–\-.:]?\s*(.*)$/);
+  (l.booths=l.booths||[]).push({no:m?m[1]:(l.booths.length+1), name:m&&m[2]?m[2]:raw,
+    voters:+$('#bo_voters').value||0, lean:$('#bo_lean').value, incharge:$('#bo_ic').value.trim()});
+  l.booths.sort((a,b)=>(+a.no)-(+b.no));
+  db.upsert(l); viewLeader(id);
+}
+function cycleLean(id,i){ const l=db.get(id); const b=l.booths[i];
+  b.lean=LEANS[(LEANS.indexOf(b.lean)+1)%LEANS.length]; db.upsert(l); viewLeader(id); }
+function setBooth(id,i,k,v){ const l=db.get(id); l.booths[i][k]=v.trim(); db.upsert(l); }
+function delBooth(id,i){ const l=db.get(id); l.booths.splice(i,1); db.upsert(l); viewLeader(id); }
+
 /* ---------- Step 4: Budget ---------- */
 /* Budget line: {desc, svc, planned, actual} — amounts in ₹ */
 const BAND_MID = {'Under 10 Lakh':8e5,'10–50 Lakh':3e6,'50 Lakh – 2 Crore':1.2e7,'2–10 Crore':6e7,'Above 10 Crore':1.5e8,'To be discussed':0};
@@ -604,7 +721,49 @@ function suggestBud(id){
   if(!added) alert('Suggested allocation already generated.');
 }
 
-renderHome();
+/* ---------- Cloud boot: login + live sync ---------- */
+function renderLogin(msg){
+  window.__rerender = ()=>renderLogin();
+  $('#app').innerHTML = `
+   <div class="card" style="max-width:520px;margin:0 auto;">
+     <h2>Team Sign-In</h2>
+     <div class="sub">RAAYA Console cloud is enabled. Sign in with an account created in Firebase Authentication.</div>
+     <div class="fgrid" style="grid-template-columns:1fr;">
+       <div><label>Email</label><input id="li_email" type="email" autocomplete="username"></div>
+       <div><label>Password</label><input id="li_pass" type="password" autocomplete="current-password"
+            onkeydown="if(event.key==='Enter')doLogin()"></div>
+     </div>
+     <div class="err" id="lierr" ${msg?'style="display:block"':''}>${esc(msg||'')}</div>
+     <div class="wnav"><span></span><button class="btn btn-gold" onclick="doLogin()">Sign In</button></div>
+   </div>`;
+}
+function doLogin(){
+  firebase.auth().signInWithEmailAndPassword($('#li_email').value.trim(), $('#li_pass').value)
+    .catch(e=>{ const el=$('#lierr'); el.textContent=e.message; el.style.display='block'; });
+}
+function doLogout(){ firebase.auth().signOut(); }
+
+function boot(){
+  if(!cloudConfigured()){ renderHome(); return; }   // local mode until keys are pasted
+  firebase.initializeApp(window.FIREBASE_CONFIG);
+  try{ firebase.firestore().enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}
+  firebase.auth().onAuthStateChanged(user=>{
+    if(!user){ CLOUD=null; renderLogin(); return; }
+    const col=firebase.firestore().collection('leaders');
+    CLOUD={col, cache:[], user};
+    let first=true;
+    col.onSnapshot(snap=>{
+      CLOUD.cache = snap.docs.map(d=>d.data());
+      if(first){ first=false;
+        const loc=localdb.all();   // one-time migration of existing browser data
+        if(loc.length && snap.empty){ loc.forEach(r=>col.doc(r.id).set(r)); CLOUD.cache=loc.slice(); }
+        renderHome(); return;
+      }
+      (window.__rerender||renderHome)();
+    }, e=>renderLogin('Cloud error: '+e.message));
+  });
+}
+boot();
 </script>
 </body>
 </html>
