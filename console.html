@@ -47,6 +47,23 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
 .btn-sm{padding:9px 16px;font-size:14px;border-radius:7px;}
 .summ dt{font-weight:700;color:var(--navy);font-size:14px;margin-top:12px;}
 .summ dd{font-size:15.5px;color:var(--ink);}
+/* plan timeline */
+.count{display:flex;gap:12px;flex-wrap:wrap;margin:6px 0 20px;}
+.count .cbox{background:var(--navy);color:#fff;border-radius:10px;padding:14px 20px;text-align:center;min-width:110px;}
+.count .cbox .n{font-family:Georgia,serif;font-size:30px;color:var(--gold);font-weight:700;line-height:1.1;}
+.count .cbox .l{font-size:12.5px;color:var(--ice);letter-spacing:.5px;}
+.phase{border-left:4px solid var(--gold);background:#fff;border:1px solid var(--line);border-left:4px solid var(--gold);border-radius:10px;padding:18px 20px;margin-bottom:14px;}
+.phase.past{opacity:.55;border-left-color:var(--muted);}
+.phase.now{box-shadow:0 0 0 2px var(--gold);}
+.phase .ph-top{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:baseline;}
+.phase h3{font-size:18px;color:var(--navy);}
+.phase .dates{font-size:13.5px;font-weight:700;color:var(--gold);letter-spacing:.5px;}
+.phase ul{margin:10px 0 0 18px;font-size:15px;line-height:1.65;}
+.phase ul li{margin-bottom:3px;}
+.phase .svctag{display:inline-block;font-size:11px;font-weight:700;background:var(--mist);color:var(--navy);border:1px solid var(--line);border-radius:4px;padding:1px 7px;margin-right:6px;vertical-align:middle;}
+.tlbar{display:flex;height:14px;border-radius:8px;overflow:hidden;margin:4px 0 24px;border:1px solid var(--line);}
+.tlbar div{position:relative;}
+.tlnote{font-size:13px;color:var(--muted);margin-bottom:18px;}
 </style>
 </head>
 <body>
@@ -253,12 +270,91 @@ function viewLeader(id){
       <dt>Notes</dt><dd>${esc(l.notes||'—')}</dd>
     </dl>
    </div>
-   <div class="card"><h2>Campaign Plan & Timeline</h2><div class="sub">Coming in Build Step 2 — auto-generated phase-wise plan from this profile.</div></div>
+   ${renderPlan(l)}
    <div class="card"><h2>Execution Tracker</h2><div class="sub">Coming in Build Step 3 — tasks, owners, status board.</div></div>
    <div class="card"><h2>Budget</h2><div class="sub">Coming in Build Step 4 — planned vs actual spend by service.</div></div>`;
   window.scrollTo(0,0);
 }
 function editLeader(id){ const l=db.get(id); W={step:0,data:JSON.parse(JSON.stringify(l))}; renderWizard(); }
+
+/* ---------- Step 2: Campaign Plan & Timeline ---------- */
+/* Phases as fractions of the runway (0 = engagement start/today, 1 = poll day).
+   Each action: [serviceKey|null, text] — null = always included. */
+const PHASES = [
+ ['Foundation & Setup', 0, .15, '#13294B', [
+   [null,'Sign engagement, set up core campaign team & reporting rhythm'],
+   [null,'Constituency baseline: past results, booth list, demographic profile'],
+   ['as','Muhurta calendar: auspicious windows for launch, filings, big announcements'],
+   ['cb','Leader positioning workshop: strengths, story, one-line promise']]],
+ ['Voter Intelligence', .1, .35, '#1b3a63', [
+   ['gp','Booth-level voter survey wave 1 — issues, mood, community mapping'],
+   ['gp','Identify swing booths, strongholds and weak zones'],
+   [null,'Rival profiling: strengths, vulnerabilities, likely narratives'],
+   ['gc','Grievance audit: pending local issues to adopt and resolve visibly']]],
+ ['Narrative & Image', .25, .55, '#0e2340', [
+   ['cb','Launch leader narrative: slogan, visual identity, biography push'],
+   ['mr','Local media relationships: editors, stringers, cable channels'],
+   ['dm','Build WhatsApp network & social handles; start content calendar'],
+   [null,'Position on top 3 local issues with concrete promises']]],
+ ['Organisation & Ground Game', .4, .75, '#13294B', [
+   ['cc','Appoint booth committees & block in-charges; training sessions'],
+   ['gp','Survey wave 2 — measure narrative shift, update target booths'],
+   ['gc','Constituency service drives: camps, grievance days, visible delivery'],
+   [null,'Community & influencer outreach: mathas, associations, youth clubs']]],
+ ['Digital Surge & War Room', .6, .9, '#1b3a63', [
+   ['wr','War room live: 24×7 monitoring, rumour response within 2 hours'],
+   ['dm','Paid + organic digital push; hyperlocal targeting by booth cluster'],
+   ['mr','Interview circuit, op-eds, press meets on schedule'],
+   [null,'Nomination filing, ECI compliance & expense register discipline']]],
+ ['Final Blitz', .88, 1, '#B3261E', [
+   [null,'Door-to-door sweep of swing booths; leader roadshows'],
+   ['cc','Poll-day machinery: booth agents, slip distribution, transport plan'],
+   ['dm','Last-72-hour digital burst (within silence-period rules)'],
+   ['wr','Counter-narrative rapid response; protect turnout in strongholds']]],
+ ['Poll Day & Counting', 1, 1, '#D99A2B', [
+   ['cc','Turnout tracking hour-by-hour; agent check-ins per booth'],
+   [null,'Counting-day agents briefed; legal team on standby'],
+   ['gc','Post-result: thank-you tour and governance/opposition plan']]]
+];
+const fmtD = d=>d.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'});
+
+function renderPlan(l){
+  const today = new Date(); today.setHours(0,0,0,0);
+  const eday = l.electionDate ? new Date(l.electionDate) : null;
+  const hasDate = eday && !isNaN(eday) && eday > today;
+  // runway: today → poll day; fallback 12 months if date missing/past
+  const end = hasDate ? eday : new Date(today.getTime()+365*864e5);
+  const span = end - today;
+  const daysLeft = Math.ceil(span/864e5);
+  const at = f=>new Date(today.getTime()+span*f);
+
+  const count = `<div class="count">
+    <div class="cbox"><div class="n">${hasDate?daysLeft:'—'}</div><div class="l">DAYS TO POLL</div></div>
+    <div class="cbox"><div class="n">${hasDate?Math.ceil(daysLeft/7):'—'}</div><div class="l">WEEKS</div></div>
+    <div class="cbox"><div class="n">${PHASES.length}</div><div class="l">PHASES</div></div>
+    <div class="cbox"><div class="n">${l.services.length}</div><div class="l">SERVICES</div></div>
+  </div>`;
+
+  const bar = `<div class="tlbar">${PHASES.slice(0,-1).map(p=>
+    `<div style="flex:${Math.max(p[2]-p[1],.05)};background:${p[3]}" title="${p[0]}"></div>`).join('')}</div>`;
+
+  const cards = PHASES.map(p=>{
+    const [name,f0,f1,,acts]=p;
+    const s=at(f0), e=at(f1);
+    const state = today>e?'past':(today>=s?'now':'');
+    const items = acts.filter(a=>!a[0]||l.services.includes(a[0]))
+      .map(a=>`<li>${a[0]?`<span class="svctag">${SERVICES.find(x=>x[0]===a[0])[1]}</span>`:''}${a[1]}</li>`).join('');
+    return `<div class="phase ${state}">
+      <div class="ph-top"><h3>${name}${state==='now'?' <span class="badge g">ACTIVE NOW</span>':''}</h3>
+      <span class="dates">${f0===1?fmtD(e):fmtD(s)+' → '+fmtD(e)}</span></div>
+      <ul>${items}</ul></div>`;
+  }).join('');
+
+  return `<div class="card"><h2>Campaign Plan & Timeline</h2>
+    <div class="sub">Auto-generated from the ${esc(elLabel(l.electionType))} target for ${esc(l.constituency)} and the ${l.services.length} services selected. Edit the leader's details to regenerate.</div>
+    ${hasDate?'':'<div class="tlnote">⚠ No valid future election date set — showing an indicative 12-month runway. Edit details to set the date.</div>'}
+    ${count}${bar}${cards}</div>`;
+}
 
 renderHome();
 </script>
