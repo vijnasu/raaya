@@ -42,14 +42,40 @@ project). The Console then shows a sign-in screen (accounts are created only
 by you in Firebase → Authentication → Users), syncs live via Firestore, works
 offline, and migrates existing browser data to the cloud on first login.
 
+### Roles & permissions
+Two roles, enforced by Firestore security rules:
+- **Admin** — sees all leaders, grants/revokes staff access per leader
+  (Team Access card on each profile). Admins are the documents in the
+  `admins` collection: create one document per admin with the **document ID
+  set to their email** (Firestore → Start collection → `admins` → doc ID
+  `you@example.com`, no fields needed).
+- **Staff** — sees only leaders whose `access` list contains their email.
+  They can work on those leaders but cannot change access lists.
+
+Every account must also exist in Firebase → Authentication → Users.
+
 Required Firestore security rules (Firestore → Rules → Publish):
 
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    function isAdmin() {
+      return request.auth != null &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+    match /admins/{email} {
+      allow read: if request.auth != null && request.auth.token.email == email;
+      allow write: if isAdmin();
+    }
     match /leaders/{doc} {
-      allow read, write: if request.auth != null;
+      allow read, delete: if isAdmin() ||
+        (request.auth != null && request.auth.token.email in resource.data.access);
+      allow create: if isAdmin() ||
+        (request.auth != null && request.auth.token.email in request.resource.data.access);
+      allow update: if isAdmin() ||
+        (request.auth != null && request.auth.token.email in resource.data.access
+         && request.resource.data.access == resource.data.access);
     }
   }
 }

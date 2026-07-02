@@ -162,7 +162,8 @@ const db = {
   all(){ return CLOUD ? CLOUD.cache.slice() : localdb.all(); },
   get(id){ return this.all().find(l=>l.id===id); },
   upsert(rec){
-    if(CLOUD){ const i=CLOUD.cache.findIndex(l=>l.id===rec.id); i>=0?CLOUD.cache[i]=rec:CLOUD.cache.push(rec);
+    if(CLOUD){ if(!rec.access||!rec.access.length) rec.access=[CLOUD.user.email]; /* creator always has access */
+      const i=CLOUD.cache.findIndex(l=>l.id===rec.id); i>=0?CLOUD.cache[i]=rec:CLOUD.cache.push(rec);
       CLOUD.col.doc(rec.id).set(JSON.parse(JSON.stringify(rec))).catch(e=>alert('Cloud save failed: '+e.message)); }
     else localdb.upsert(rec);
   },
@@ -250,7 +251,7 @@ function renderHome(){
     <div class="card">
       <h2>Onboarded Leaders</h2>
       <div class="sub">Every leader gets a profile, plan, tracker and budget.</div>
-      ${CLOUD?`<div class="tlnote">☁ Cloud sync ON — signed in as ${esc(CLOUD.user.email)} · data shared across your team's devices.
+      ${CLOUD?`<div class="tlnote">☁ Cloud sync ON — signed in as ${esc(CLOUD.user.email)} <span class="badge ${CLOUD.isAdmin?'g':''}">${CLOUD.isAdmin?'ADMIN — all leaders':'STAFF — assigned leaders only'}</span>
         <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line);margin-left:8px" onclick="doLogout()">Sign out</button></div>`
       :cloudConfigured()?'':`<div class="tlnote">💾 Local mode — data lives only in this browser. Paste your Firebase keys in assets/firebase-config.js to enable team cloud sync.</div>`}
       ${rows}
@@ -421,7 +422,8 @@ function viewLeader(id){
    ${renderPlan(l)}
    ${renderTracker(l)}
    ${renderBooths(l)}
-   ${renderBudget(l)}`;
+   ${renderBudget(l)}
+   ${renderAccess(l)}`;
   window.scrollTo(0,0);
 }
 function editLeader(id){ const l=db.get(id); W={step:0,data:JSON.parse(JSON.stringify(l))}; renderWizard(); }
@@ -722,6 +724,37 @@ function suggestBud(id){
   if(!added) alert('Suggested allocation already generated.');
 }
 
+/* ---------- Team Access (roles/permissions, cloud mode) ---------- */
+function renderAccess(l){
+  if(!CLOUD) return '';
+  const acc=l.access||[];
+  const rows=acc.map((e,i)=>`<div class="trow">
+    <span class="tt">${esc(e)}${e===CLOUD.user.email?' <span class="badge g">you</span>':''}</span>
+    ${CLOUD.isAdmin?`<button class="tdel" onclick="revokeAccess('${l.id}',${i})" title="Revoke access">✕</button>`:''}
+  </div>`).join('');
+  return `<div class="card"><h2>Team Access</h2>
+    <div class="sub">${CLOUD.isAdmin
+      ?'Only these signed-in accounts (and admins) can see and work on this leader. The account must also exist in Firebase Authentication → Users.'
+      :'Accounts with access to this leader. Ask an admin to change this.'}</div>
+    ${rows||'<p style="color:var(--muted)">No staff assigned — only admins can see this leader.</p>'}
+    ${CLOUD.isAdmin?`<div class="taddgrid" style="grid-template-columns:2fr auto">
+      <div><label>Grant access (email)</label><input id="ac_email" type="email" placeholder="staff@example.com"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="grantAccess('${l.id}')">+ Grant</button></div>
+    </div>`:''}
+  </div>`;
+}
+function grantAccess(id){
+  const l=db.get(id); const e=$('#ac_email').value.trim().toLowerCase();
+  if(!/^\S+@\S+\.\S+$/.test(e)) return alert('Enter a valid email address.');
+  l.access=l.access||[]; if(l.access.includes(e)) return alert('Already has access.');
+  l.access.push(e); db.upsert(l); viewLeader(id);
+}
+function revokeAccess(id,i){
+  const l=db.get(id);
+  if(l.access[i]===CLOUD.user.email && !confirm('Remove your own access? (As admin you will still see the leader.)')) return;
+  l.access.splice(i,1); db.upsert(l); viewLeader(id);
+}
+
 /* ---------- Leader Directory (auth-gated) ---------- */
 let DIR = {set:'mla', q:'', party:'', sort:'m'};
 function renderDirectory(){
@@ -800,16 +833,24 @@ function boot(){
   if(!cloudConfigured()){ renderHome(); return; }   // local mode until keys are pasted
   firebase.initializeApp(window.FIREBASE_CONFIG);
   try{ firebase.firestore().enablePersistence({synchronizeTabs:true}).catch(()=>{}); }catch(e){}
-  firebase.auth().onAuthStateChanged(user=>{
+  firebase.auth().onAuthStateChanged(async user=>{
     if(!user){ CLOUD=null; renderLogin(); return; }
-    const col=firebase.firestore().collection('leaders');
-    CLOUD={col, cache:[], user};
+    const fs=firebase.firestore();
+    const col=fs.collection('leaders');
+    let isAdmin=false;
+    try{ isAdmin=(await fs.doc('admins/'+user.email).get()).exists; }catch(e){}
+    CLOUD={col, cache:[], user, isAdmin};
     let first=true;
-    col.onSnapshot(snap=>{
+    /* staff only receive leaders they're granted on; admins receive all */
+    const q = isAdmin ? col : col.where('access','array-contains',user.email);
+    q.onSnapshot(snap=>{
       CLOUD.cache = snap.docs.map(d=>d.data());
       if(first){ first=false;
-        const loc=localdb.all();   // one-time migration of existing browser data
-        if(loc.length && snap.empty){ loc.forEach(r=>col.doc(r.id).set(r)); CLOUD.cache=loc.slice(); }
+        const loc=localdb.all();   // one-time migration of existing browser data (admins only)
+        if(isAdmin && loc.length && snap.empty){
+          loc.forEach(r=>{ r.access=r.access||[user.email]; col.doc(r.id).set(r); });
+          CLOUD.cache=loc.slice();
+        }
         renderHome(); return;
       }
       (window.__rerender||renderHome)();
