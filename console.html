@@ -64,6 +64,35 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--gold);}
 .tlbar{display:flex;height:14px;border-radius:8px;overflow:hidden;margin:4px 0 24px;border:1px solid var(--line);}
 .tlbar div{position:relative;}
 .tlnote{font-size:13px;color:var(--muted);margin-bottom:18px;}
+/* execution tracker */
+.prog{height:12px;background:var(--mist);border:1px solid var(--line);border-radius:8px;overflow:hidden;margin:8px 0 20px;}
+.prog div{height:100%;background:linear-gradient(90deg,var(--gold),var(--gold2));transition:.3s;}
+.trow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line);flex-wrap:wrap;}
+.trow:last-child{border-bottom:none;}
+.trow.done .tt{text-decoration:line-through;color:var(--muted);}
+.tt{flex:1;min-width:200px;font-size:15.5px;color:var(--ink);}
+.tmeta{font-size:13px;color:var(--muted);white-space:nowrap;}
+.tmeta.late{color:#B3261E;font-weight:700;}
+.st{border:none;border-radius:20px;padding:5px 14px;font-size:12.5px;font-weight:700;cursor:pointer;min-width:106px;font-family:inherit;}
+.st.pending{background:var(--mist);color:var(--muted);border:1px solid var(--line);}
+.st.progress{background:var(--navy);color:#fff;}
+.st.done{background:var(--gold);color:var(--navy);}
+.tdel{background:none;border:none;color:var(--muted);cursor:pointer;font-size:17px;}
+.tdel:hover{color:#B3261E;}
+.taddgrid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr auto;gap:10px;margin-top:18px;align-items:end;}
+@media(max-width:820px){.taddgrid{grid-template-columns:1fr 1fr;}}
+/* budget */
+.btotals{display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px;}
+.btotals .cbox{background:var(--mist);border:1px solid var(--line);border-radius:10px;padding:12px 18px;min-width:150px;}
+.btotals .cbox .n{font-family:Georgia,serif;font-size:24px;font-weight:700;color:var(--navy);}
+.btotals .cbox.hot .n{color:#B3261E;}
+.btotals .cbox .l{font-size:12.5px;color:var(--muted);letter-spacing:.5px;font-weight:700;}
+table.btab{width:100%;border-collapse:collapse;font-size:15px;}
+.btab th{text-align:left;font-size:12.5px;letter-spacing:1px;text-transform:uppercase;color:var(--muted);padding:8px 10px;border-bottom:2px solid var(--line);}
+.btab td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle;}
+.btab td.num,.btab th.num{text-align:right;font-variant-numeric:tabular-nums;}
+.btab td.over{color:#B3261E;font-weight:700;}
+.btab input.cell{padding:7px 9px;font-size:14.5px;max-width:130px;text-align:right;}
 </style>
 </head>
 <body>
@@ -127,28 +156,69 @@ const $ = s=>document.querySelector(s);
 const esc = s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /* ---------- Home: leader list ---------- */
+function leaderStats(l){
+  const today=new Date(); today.setHours(0,0,0,0);
+  const e=l.electionDate?new Date(l.electionDate):null;
+  const days=(e&&!isNaN(e))?Math.ceil((e-today)/864e5):null;
+  const tasks=l.tasks||[], done=tasks.filter(t=>t.status==='done').length;
+  const late=tasks.filter(t=>t.due&&t.due<today.toISOString().slice(0,10)&&t.status!=='done').length;
+  const planned=(l.budget||[]).reduce((s,b)=>s+(+b.planned||0),0);
+  const actual=(l.budget||[]).reduce((s,b)=>s+(+b.actual||0),0);
+  return {days,tasks:tasks.length,done,late,planned,actual};
+}
 function renderHome(){
   const leaders = db.all();
-  let rows = leaders.length ? leaders.map(l=>`
+  const agg = leaders.map(leaderStats);
+  const dash = leaders.length?`<div class="count">
+    <div class="cbox"><div class="n">${leaders.length}</div><div class="l">LEADERS</div></div>
+    <div class="cbox"><div class="n">${agg.reduce((s,a)=>s+a.tasks-a.done,0)}</div><div class="l">OPEN TASKS</div></div>
+    <div class="cbox"><div class="n" ${agg.some(a=>a.late)?'style="color:#ff8f8f"':''}>${agg.reduce((s,a)=>s+a.late,0)}</div><div class="l">OVERDUE</div></div>
+    <div class="cbox"><div class="n">${inr(agg.reduce((s,a)=>s+a.actual,0))}</div><div class="l">TOTAL SPENT</div></div>
+  </div>`:'';
+  let rows = leaders.length ? leaders.map((l,i)=>{
+    const a=agg[i];
+    const pct=a.tasks?Math.round(a.done/a.tasks*100):0;
+    return `
     <div class="lrow">
-      <div>
+      <div style="flex:1;min-width:240px">
         <div class="nm">${esc(l.name)} <span class="badge g">${esc(elLabel(l.electionType))}</span>
           ${l.party?`<span class="badge">${esc(l.party)}</span>`:''}</div>
-        <div class="meta">${esc(l.constituency)}, ${esc(l.state)} · Election: ${esc(l.electionDate||'TBD')} · ${l.services.length} services</div>
+        <div class="meta">${esc(l.constituency)}, ${esc(l.state)}
+          · ${a.days!==null?(a.days>=0?a.days+' days to poll':'polled'):'date TBD'}
+          · Tasks ${a.done}/${a.tasks}${a.late?` <b style="color:#B3261E">(${a.late} overdue)</b>`:''}
+          · Spent ${inr(a.actual)}${a.planned?' of '+inr(a.planned):''}</div>
+        ${a.tasks?`<div class="prog" style="max-width:340px;margin:8px 0 0"><div style="width:${pct}%"></div></div>`:''}
       </div>
       <div>
         <button class="btn btn-navy btn-sm" onclick="viewLeader('${l.id}')">Open Profile</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="delLeader('${l.id}')">Remove</button>
       </div>
-    </div>`).join('')
+    </div>`;}).join('')
     : `<p style="color:var(--muted)">No leaders onboarded yet. Start with your first onboarding below.</p>`;
   $('#app').innerHTML = `
+    ${dash?`<div class="card"><h2>Command Dashboard</h2><div class="sub">All campaigns at a glance.</div>${dash}</div>`:''}
     <div class="card">
       <h2>Onboarded Leaders</h2>
       <div class="sub">Every leader gets a profile, plan, tracker and budget.</div>
       ${rows}
-      <div style="margin-top:22px"><button class="btn btn-gold" onclick="startWizard()">+ Onboard New Leader</button></div>
+      <div style="margin-top:22px"><button class="btn btn-gold" onclick="startWizard()">+ Onboard New Leader</button>
+      ${leaders.length?`<button class="btn btn-navy btn-sm" style="margin-left:10px" onclick="exportData()">⤒ Export backup (JSON)</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="document.getElementById('impfile').click()">⤓ Import backup</button>
+      <input type="file" id="impfile" accept=".json" style="display:none" onchange="importData(this)">`:''}</div>
     </div>`;
+}
+function exportData(){
+  const a=document.createElement('a');
+  a.href='data:application/json;charset=utf-8,'+encodeURIComponent(JSON.stringify(db.all(),null,1));
+  a.download='raaya-console-backup-'+new Date().toISOString().slice(0,10)+'.json'; a.click();
+}
+function importData(inp){
+  const f=inp.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ const d=JSON.parse(r.result); if(!Array.isArray(d)) throw 0;
+    if(confirm('Replace current data with '+d.length+' leader(s) from backup?')){ db.save(d); renderHome(); }
+  }catch(e){ alert('Invalid backup file.'); } };
+  r.readAsText(f);
 }
 function elLabel(k){ const e=ELECTIONS.find(e=>e[0]===k); return e?e[1]:k; }
 function delLeader(id){ if(confirm('Remove this leader and all their data?')){ db.remove(id); renderHome(); } }
@@ -271,8 +341,8 @@ function viewLeader(id){
     </dl>
    </div>
    ${renderPlan(l)}
-   <div class="card"><h2>Execution Tracker</h2><div class="sub">Coming in Build Step 3 — tasks, owners, status board.</div></div>
-   <div class="card"><h2>Budget</h2><div class="sub">Coming in Build Step 4 — planned vs actual spend by service.</div></div>`;
+   ${renderTracker(l)}
+   ${renderBudget(l)}`;
   window.scrollTo(0,0);
 }
 function editLeader(id){ const l=db.get(id); W={step:0,data:JSON.parse(JSON.stringify(l))}; renderWizard(); }
@@ -350,10 +420,143 @@ function renderPlan(l){
       <ul>${items}</ul></div>`;
   }).join('');
 
-  return `<div class="card"><h2>Campaign Plan & Timeline</h2>
+  return `<div class="card"><h2>Campaign Plan &amp; Timeline</h2>
     <div class="sub">Auto-generated from the ${esc(elLabel(l.electionType))} target for ${esc(l.constituency)} and the ${l.services.length} services selected. Edit the leader's details to regenerate.</div>
     ${hasDate?'':'<div class="tlnote">⚠ No valid future election date set — showing an indicative 12-month runway. Edit details to set the date.</div>'}
     ${count}${bar}${cards}</div>`;
+}
+
+/* ---------- Step 3: Execution Tracker ---------- */
+const T_STATUS = ['pending','progress','done'];
+const T_LABEL  = {pending:'Pending',progress:'In Progress',done:'Done ✓'};
+
+function renderTracker(l){
+  const tasks = l.tasks||[];
+  const done = tasks.filter(t=>t.status==='done').length;
+  const pct = tasks.length ? Math.round(done/tasks.length*100) : 0;
+  const today = new Date().toISOString().slice(0,10);
+
+  const rows = tasks.length ? tasks.map((t,i)=>{
+    const late = t.due && t.due < today && t.status!=='done';
+    return `<div class="trow ${t.status==='done'?'done':''}">
+      <button class="st ${t.status}" onclick="cycleTask('${l.id}',${i})" title="Click to change status">${T_LABEL[t.status]}</button>
+      <span class="tt">${t.phase?`<span class="svctag">${esc(t.phase)}</span>`:''}${esc(t.title)}</span>
+      <span class="tmeta">${esc(t.owner||'Unassigned')}</span>
+      <span class="tmeta ${late?'late':''}">${t.due?(late?'⚠ ':'')+'Due '+esc(t.due):''}</span>
+      <button class="tdel" onclick="delTask('${l.id}',${i})" title="Delete task">✕</button>
+    </div>`;
+  }).join('') : `<p style="color:var(--muted)">No tasks yet — add one below, or import the campaign plan's actions as tasks in one click.</p>`;
+
+  return `<div class="card"><h2>Execution Tracker</h2>
+    <div class="sub">${tasks.length?`${done} of ${tasks.length} tasks done (${pct}%)`:'Track every action: owner, deadline, status.'}</div>
+    ${tasks.length?`<div class="prog"><div style="width:${pct}%"></div></div>`:''}
+    ${rows}
+    <div class="taddgrid">
+      <div><label>New Task *</label><input id="t_title" placeholder="e.g. Finalise booth committee list for Block 3"></div>
+      <div><label>Owner</label><input id="t_owner" placeholder="Name / team"></div>
+      <div><label>Due Date</label><input id="t_due" type="date"></div>
+      <div><label>Phase</label><select id="t_phase"><option value="">—</option>${PHASES.map(p=>`<option>${p[0]}</option>`).join('')}</select></div>
+      <div><button class="btn btn-navy btn-sm" onclick="addTask('${l.id}')">+ Add</button></div>
+    </div>
+    <div style="margin-top:14px"><button class="btn btn-gold btn-sm" onclick="importPlan('${l.id}')">⤓ Import plan actions as tasks</button></div>
+  </div>`;
+}
+function addTask(id){
+  const l=db.get(id); const title=$('#t_title').value.trim();
+  if(!title) return alert('Task description is required.');
+  (l.tasks=l.tasks||[]).push({title, owner:$('#t_owner').value.trim(), due:$('#t_due').value, phase:$('#t_phase').value, status:'pending'});
+  db.upsert(l); viewLeader(id);
+}
+function cycleTask(id,i){
+  const l=db.get(id); const t=l.tasks[i];
+  t.status = T_STATUS[(T_STATUS.indexOf(t.status)+1)%T_STATUS.length];
+  db.upsert(l); viewLeader(id);
+}
+function delTask(id,i){ const l=db.get(id); l.tasks.splice(i,1); db.upsert(l); viewLeader(id); }
+function importPlan(id){
+  const l=db.get(id); l.tasks=l.tasks||[];
+  const today=new Date(); today.setHours(0,0,0,0);
+  const eday=l.electionDate?new Date(l.electionDate):null;
+  const end=(eday&&!isNaN(eday)&&eday>today)?eday:new Date(today.getTime()+365*864e5);
+  const span=end-today; let added=0;
+  PHASES.forEach(p=>{
+    const due=new Date(today.getTime()+span*p[2]).toISOString().slice(0,10);
+    p[4].filter(a=>!a[0]||l.services.includes(a[0])).forEach(a=>{
+      if(!l.tasks.some(t=>t.title===a[1])){ l.tasks.push({title:a[1],owner:'',due,phase:p[0],status:'pending'}); added++; }
+    });
+  });
+  db.upsert(l); viewLeader(id);
+  if(!added) alert('All plan actions are already in the tracker.');
+}
+
+/* ---------- Step 4: Budget ---------- */
+/* Budget line: {desc, svc, planned, actual} — amounts in ₹ */
+const BAND_MID = {'Under 10 Lakh':8e5,'10–50 Lakh':3e6,'50 Lakh – 2 Crore':1.2e7,'2–10 Crore':6e7,'Above 10 Crore':1.5e8,'To be discussed':0};
+/* default share of budget per service (renormalised over selected ones) */
+const SVC_SHARE = {gp:.15,cb:.10,cc:.25,dm:.18,wr:.12,gc:.10,as:.02,mr:.08};
+const inr = n=>'₹'+Math.round(n).toLocaleString('en-IN');
+
+function renderBudget(l){
+  const B = l.budget||[];
+  const planned = B.reduce((s,b)=>s+(+b.planned||0),0);
+  const actual  = B.reduce((s,b)=>s+(+b.actual||0),0);
+  const band = BAND_MID[l.budgetBand]||0;
+  const remain = planned-actual;
+
+  const totals = `<div class="btotals">
+    <div class="cbox"><div class="n">${inr(planned)}</div><div class="l">PLANNED</div></div>
+    <div class="cbox ${actual>planned&&planned?'hot':''}"><div class="n">${inr(actual)}</div><div class="l">SPENT</div></div>
+    <div class="cbox ${remain<0?'hot':''}"><div class="n">${inr(remain)}</div><div class="l">REMAINING</div></div>
+    ${band?`<div class="cbox ${planned>band?'hot':''}"><div class="n">${Math.round(planned/band*100)}%</div><div class="l">OF ${esc(l.budgetBand).toUpperCase()} BAND</div></div>`:''}
+  </div>`;
+
+  const rows = B.length ? B.map((b,i)=>{
+    const over = (+b.actual||0) > (+b.planned||0) && +b.planned>0;
+    return `<tr>
+      <td>${esc(b.desc)}</td>
+      <td>${b.svc?esc((SERVICES.find(s=>s[0]===b.svc)||[,b.svc])[1]):'—'}</td>
+      <td class="num"><input class="cell" type="number" min="0" value="${+b.planned||0}" onchange="setBud('${l.id}',${i},'planned',this.value)"></td>
+      <td class="num ${over?'over':''}"><input class="cell" type="number" min="0" value="${+b.actual||0}" onchange="setBud('${l.id}',${i},'actual',this.value)"></td>
+      <td class="num ${over?'over':''}">${inr((+b.planned||0)-(+b.actual||0))}</td>
+      <td><button class="tdel" onclick="delBud('${l.id}',${i})" title="Delete line">✕</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" style="color:var(--muted)">No budget lines yet — add one below, or generate a suggested allocation from the engaged services.</td></tr>`;
+
+  return `<div class="card"><h2>Budget</h2>
+    <div class="sub">Planned vs actual spend. Edit amounts inline — totals update on change. Band: ₹ ${esc(l.budgetBand)}.</div>
+    ${totals}
+    <table class="btab"><thead><tr><th>Line Item</th><th>Service</th><th class="num">Planned ₹</th><th class="num">Actual ₹</th><th class="num">Balance</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>
+    <div class="taddgrid">
+      <div><label>New Line Item *</label><input id="b_desc" placeholder="e.g. Booth survey wave 1 — field team"></div>
+      <div><label>Service</label><select id="b_svc"><option value="">—</option>${l.services.map(k=>`<option value="${k}">${SERVICES.find(s=>s[0]===k)[1]}</option>`).join('')}</select></div>
+      <div><label>Planned ₹</label><input id="b_planned" type="number" min="0"></div>
+      <div><label>Actual ₹</label><input id="b_actual" type="number" min="0" value="0"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="addBud('${l.id}')">+ Add</button></div>
+    </div>
+    ${band?`<div style="margin-top:14px"><button class="btn btn-gold btn-sm" onclick="suggestBud('${l.id}')">⤓ Suggest allocation from budget band</button></div>`:''}
+  </div>`;
+}
+function addBud(id){
+  const l=db.get(id); const desc=$('#b_desc').value.trim();
+  if(!desc) return alert('Line item description is required.');
+  (l.budget=l.budget||[]).push({desc, svc:$('#b_svc').value, planned:+$('#b_planned').value||0, actual:+$('#b_actual').value||0});
+  db.upsert(l); viewLeader(id);
+}
+function setBud(id,i,k,v){ const l=db.get(id); l.budget[i][k]=+v||0; db.upsert(l); viewLeader(id); }
+function delBud(id,i){ const l=db.get(id); l.budget.splice(i,1); db.upsert(l); viewLeader(id); }
+function suggestBud(id){
+  const l=db.get(id); l.budget=l.budget||[];
+  const band=BAND_MID[l.budgetBand]||0; if(!band) return;
+  const totalShare=l.services.reduce((s,k)=>s+(SVC_SHARE[k]||.05),0)+ .1; /* +10% contingency */
+  let added=0;
+  l.services.forEach(k=>{
+    const name=SERVICES.find(s=>s[0]===k)[1];
+    if(!l.budget.some(b=>b.svc===k&&b.auto)){ l.budget.push({desc:name+' — programme budget',svc:k,planned:Math.round(band*(SVC_SHARE[k]||.05)/totalShare),actual:0,auto:1}); added++; }
+  });
+  if(!l.budget.some(b=>b.auto==='cont')){ l.budget.push({desc:'Contingency & rapid response reserve',svc:'',planned:Math.round(band*.1/totalShare),actual:0,auto:'cont'}); added++; }
+  db.upsert(l); viewLeader(id);
+  if(!added) alert('Suggested allocation already generated.');
 }
 
 renderHome();
