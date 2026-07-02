@@ -118,6 +118,8 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 
 <div class="con-body"><div class="wrap" id="app"></div></div>
 
+<script src="assets/ka2023.js"></script>
+<script src="assets/ka_ls2024.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
@@ -262,6 +264,12 @@ function renderWizard(){
  </div>${wnav()}</div>`,
 
 `<div class="card"><h2>Constituency</h2><div class="sub">Where is the battle?</div>
+ ${kaData(d.electionType)?`<div style="margin-bottom:18px">
+   <label>Pick a Karnataka ${d.electionType==='lok_sabha'?'Lok Sabha Constituency (2024 results auto-fill)':'Assembly Constituency (2023 results auto-fill)'}</label>
+   <select id="f_kacon" onchange="pickKA(this.value)"><option value="">— Select from all ${kaData(d.electionType).length} constituencies —</option>
+   ${kaData(d.electionType).map(k=>`<option ${d.intel&&d.intel.c===k.c?'selected':''}>${k.c}</option>`).join('')}</select>
+   <div class="hint">Selecting fills the sitting ${d.electionType==='lok_sabha'?'MP':'MLA'}, runner-up, parties and victory margin below.</div>
+ </div>`:''}
  <div class="fgrid">
   <div><label>State *</label><select id="f_state">${STATES.map(s=>`<option ${d.state===s?'selected':''}>${s}</option>`).join('')}</select></div>
   <div><label>Constituency / Ward Name *</label><input id="f_const" value="${esc(d.constituency)}" placeholder="e.g. Chikkamagaluru, Ward 12 — Rajajinagar"></div>
@@ -286,6 +294,7 @@ function renderWizard(){
   <dt>Contact</dt><dd>${esc(d.phone||'—')} · ${esc(d.email||'—')}</dd>
   <dt>Election</dt><dd>${esc(elLabel(d.electionType))} — ${esc(d.status)} · Date: ${esc(d.electionDate||'TBD')}</dd>
   <dt>Constituency</dt><dd>${esc(d.constituency)}, ${esc(d.state)} · ${esc(d.mix||'')} · ${d.voters?Number(d.voters).toLocaleString('en-IN')+' voters':'voter count TBD'}</dd>
+  ${d.intel?`<dt>${kaMeta(d.electionType).yr} Result (auto-filled)</dt><dd>${esc(d.intel.w)} (${esc(d.intel.wp)}) beat ${esc(d.intel.r)} (${esc(d.intel.rp)}) by ${d.intel.m.toLocaleString('en-IN')} votes</dd>`:''}
   <dt>Rivals & Issues</dt><dd>${esc(d.rivals||'—')}</dd>
   <dt>RAAYA Services (${d.services.length})</dt><dd>${d.services.map(k=>SERVICES.find(s=>s[0]===k)[1]).join(' · ')||'—'}</dd>
   <dt>Budget Band</dt><dd>₹ ${esc(d.budgetBand)} · Start: ${esc(d.start)}</dd>
@@ -295,6 +304,17 @@ function renderWizard(){
   window.scrollTo({top:0,behavior:'smooth'});
 }
 function pickEl(k){ W.data.electionType=k; renderWizard(); }
+function kaData(et){ return et==='vidhan_sabha'?window.KA2023:et==='lok_sabha'?window.KA_LS2024:null; }
+function kaMeta(et){ return et==='lok_sabha'?{yr:'2024',house:'Lok Sabha',seat:'MP'}:{yr:'2023',house:'Vidhan Sabha',seat:'MLA'}; }
+function pickKA(name){
+  const d=W.data; const k=(kaData(d.electionType)||[]).find(x=>x.c===name);
+  if(!k){ d.intel=null; return; }
+  const m=kaMeta(d.electionType);
+  d.intel = k;
+  $('#f_state').value='Karnataka';
+  $('#f_const').value=k.c;
+  $('#f_rivals').value = `Sitting ${m.seat}: ${k.w} (${k.wp}), won ${m.yr} by ${k.m.toLocaleString('en-IN')} votes over ${k.r} (${k.rp}).`;
+}
 function toggleSvc(k){ const s=W.data.services; const i=s.indexOf(k); i>=0?s.splice(i,1):s.push(k); renderWizard(); }
 function wBack(){ collect(); W.step--; renderWizard(); }
 function collect(){
@@ -302,7 +322,8 @@ function collect(){
   const d=W.data;
   if(W.step===0){d.name=g('f_name');d.party=g('f_party');d.phone=g('f_phone');d.email=g('f_email');d.position=g('f_pos');d.experience=g('f_exp');d.notes=g('f_notes');}
   if(W.step===1){d.electionDate=g('f_edate');d.status=g('f_status');}
-  if(W.step===2){d.state=g('f_state');d.constituency=g('f_const');d.voters=g('f_voters');d.mix=g('f_mix');d.rivals=g('f_rivals');}
+  if(W.step===2){d.state=g('f_state');d.constituency=g('f_const');d.voters=g('f_voters');d.mix=g('f_mix');d.rivals=g('f_rivals');
+    if(d.intel && d.constituency!==d.intel.c) d.intel=null; /* typed over the picked seat */}
   if(W.step===3){d.budgetBand=g('f_budget');d.start=g('f_start');}
 }
 function wNext(){
@@ -340,12 +361,36 @@ function viewLeader(id){
       <dt>Notes</dt><dd>${esc(l.notes||'—')}</dd>
     </dl>
    </div>
+   ${renderIntel(l)}
    ${renderPlan(l)}
    ${renderTracker(l)}
    ${renderBudget(l)}`;
   window.scrollTo(0,0);
 }
 function editLeader(id){ const l=db.get(id); W={step:0,data:JSON.parse(JSON.stringify(l))}; renderWizard(); }
+
+/* ---------- Constituency Intelligence (KA 2023) ---------- */
+function renderIntel(l){
+  const k=l.intel; if(!k) return '';
+  const meta=kaMeta(l.electionType);
+  const tot=k.wv+k.rv; /* two-way share for the bar */
+  const wpct=Math.round(k.wv/tot*100);
+  const marginPct=(k.m/k.wv*100).toFixed(1);
+  const mp=k.m/k.wv*100;
+  const battle = mp<8?'MARGINAL SEAT — highly winnable':mp<20?'COMPETITIVE SEAT':'STRONGHOLD — steep climb for challengers';
+  return `<div class="card"><h2>Constituency Intelligence — ${esc(k.c)} <span class="badge ${mp<8?'':'g'}">${battle}</span></h2>
+    <div class="sub">${meta.yr} ${meta.house} result (live data, source: ECI via Wikipedia).</div>
+    <div class="btotals">
+      <div class="cbox"><div class="n">${esc(k.w)}</div><div class="l">SITTING ${meta.seat} — ${esc(k.wp)} · ${k.wv.toLocaleString('en-IN')} VOTES</div></div>
+      <div class="cbox"><div class="n">${esc(k.r)}</div><div class="l">RUNNER-UP — ${esc(k.rp)} · ${k.rv.toLocaleString('en-IN')} VOTES</div></div>
+      <div class="cbox ${mp<8?'hot':''}"><div class="n">${k.m.toLocaleString('en-IN')}</div><div class="l">${meta.yr} MARGIN (${marginPct}% OF WINNER'S VOTES)</div></div>
+    </div>
+    <div class="tlbar" title="${esc(k.wp)} ${wpct}% vs ${esc(k.rp)} ${100-wpct}% (head-to-head)">
+      <div style="flex:${k.wv};background:var(--navy)"></div><div style="flex:${k.rv};background:var(--gold)"></div>
+    </div>
+    <div class="tlnote">Head-to-head vote split: <b>${esc(k.wp)}</b> ${wpct}% (navy) vs <b>${esc(k.rp)}</b> ${100-wpct}% (gold). Flip target: ${Math.ceil(k.m/2+1).toLocaleString('en-IN')}+ voters need to switch.</div>
+  </div>`;
+}
 
 /* ---------- Step 2: Campaign Plan & Timeline ---------- */
 /* Phases as fractions of the runway (0 = engagement start/today, 1 = poll day).
