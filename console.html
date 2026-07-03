@@ -147,6 +147,7 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 <script src="assets/ka2023.js"></script>
 <script src="assets/ka_ls2024.js"></script>
 <script src="assets/ka_mlc.js"></script>
+<script src="assets/ka_dossier.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
@@ -450,6 +451,23 @@ function renderIntel(l){
       <div style="flex:${k.wv};background:var(--navy)"></div><div style="flex:${k.rv};background:var(--gold)"></div>
     </div>
     <div class="tlnote">Head-to-head vote split: <b>${esc(k.wp)}</b> ${wpct}% (navy) vs <b>${esc(k.rp)}</b> ${100-wpct}% (gold). Flip target: ${Math.ceil(k.m/2+1).toLocaleString('en-IN')}+ voters need to switch.</div>
+    ${renderDossier(k,l)}
+  </div>`;
+}
+/* Rival Dossier — ADR/MyNeta affidavit analysis of the sitting MLA (Vidhan Sabha only) */
+function renderDossier(k,l){
+  if(l.electionType!=='vidhan_sabha'||!window.KA_DOSSIER) return '';
+  const d=KA_DOSSIER[k.c]; if(!d) return '';
+  const cr=n=>n>=1e7?(n/1e7).toFixed(2).replace(/\.?0+$/,'')+' Cr':n>=1e5?(n/1e5).toFixed(1).replace(/\.?0+$/,'')+' L':n.toLocaleString('en-IN');
+  return `<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px">
+    <h3 style="font-size:19px;color:var(--navy);margin-bottom:10px">⚖ Rival Dossier — ${esc(k.w)} <span class="badge">${esc(k.wp)}</span></h3>
+    <div class="btotals">
+      <div class="cbox ${d.cases>0?'hot':''}"><div class="n">${d.cases}</div><div class="l">CRIMINAL CASES DECLARED</div></div>
+      <div class="cbox"><div class="n">₹${cr(d.assets)}</div><div class="l">DECLARED ASSETS</div></div>
+      <div class="cbox"><div class="n">₹${cr(d.liab)}</div><div class="l">LIABILITIES</div></div>
+      <div class="cbox"><div class="n" style="font-size:20px">${esc(d.edu)}</div><div class="l">EDUCATION</div></div>
+    </div>
+    <div class="tlnote">Source: 2023 election affidavit, analysed by ADR (myneta.info). Use for positioning research; verify before public use.</div>
   </div>`;
 }
 
@@ -820,9 +838,12 @@ function renderDirectory(){
       <td>${esc(k.w)}<br><span class="badge g">${esc(k.wp)}</span></td>
       <td><span style="color:var(--muted)">Term ends ${esc(k.te)}</span></td>
       <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('mlc','${ri}')">Onboard →</button></td></tr>`;
-    const [lab,col]=cls(k);return `<tr>
+    const [lab,col]=cls(k);
+    const dd=(DIR.set==='mla'&&window.KA_DOSSIER)?KA_DOSSIER[k.c]:null;
+    const dinfo=dd?`<br><span style="font-size:15px;color:${dd.cases>0?'#B3261E':'var(--muted)'}">⚖ ${dd.cases} case${dd.cases===1?'':'s'} · ₹${dd.assets>=1e7?(dd.assets/1e7).toFixed(1)+' Cr':(dd.assets/1e5).toFixed(0)+' L'}</span>`:'';
+    return `<tr>
     <td><b>${esc(k.c)}</b><br><span style="font-size:15px;color:var(--muted)">margin ${k.m.toLocaleString('en-IN')} · <b style="color:${col}">${lab}</b></span></td>
-    <td>${esc(k.w)}<br><span class="badge g">${esc(k.wp)}</span> <span style="font-size:15px;color:var(--muted)">${k.wv.toLocaleString('en-IN')}</span></td>
+    <td>${esc(k.w)}<br><span class="badge g">${esc(k.wp)}</span> <span style="font-size:15px;color:var(--muted)">${k.wv.toLocaleString('en-IN')}</span>${dinfo}</td>
     <td>${esc(k.r)}<br><span class="badge">${esc(k.rp)}</span> <span style="font-size:15px;color:var(--muted)">${k.rv.toLocaleString('en-IN')}</span></td>
     <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('${DIR.set}','${esc(k.c).replace(/'/g,"\\'")}')">Onboard →</button></td>
   </tr>`;}).join('');
