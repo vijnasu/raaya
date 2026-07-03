@@ -427,6 +427,8 @@ function viewLeader(id){
    ${renderIntel(l)}
    ${renderPlan(l)}
    ${renderTracker(l)}
+   ${renderGP(l)}
+   ${renderCB(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -633,6 +635,136 @@ function importPlan(id){
   db.upsert(l); viewLeader(id);
   if(!added) alert('All plan actions are already in the tracker.');
 }
+
+/* ---------- Service Module: Ground Pulse (gp) ---------- */
+/* l.gp = {issues:[{n,sev(1-5)}], waves:[{date,sample,fav,note}]} */
+const SEV_COL=['','#6B7A8D','#1E7A3C','var(--gold)','#D9662B','#B3261E'];
+const SEV_LABEL=['','Low','Mild','Rising','Hot','Explosive'];
+function renderGP(l){
+  if(!l.services.includes('gp')) return '';
+  const g=l.gp||{issues:[],waves:[]};
+  const issues=[...g.issues].sort((a,b)=>b.sev-a.sev);
+  const irows=issues.length?issues.map(it=>{
+    const i=g.issues.indexOf(it);
+    return `<div class="trow">
+      <button class="st" style="background:${SEV_COL[it.sev]};color:#fff;min-width:110px" onclick="gpCycleSev('${l.id}',${i})" title="Click to escalate/reset">${SEV_LABEL[it.sev]} ${'●'.repeat(it.sev)}</button>
+      <span class="tt">${esc(it.n)}</span>
+      <button class="tdel" onclick="gpDelIssue('${l.id}',${i})" title="Delete issue">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No issues logged — add what the ground is talking about.</p>';
+  const waves=g.waves;
+  const wrows=waves.length?waves.map((w,i)=>{
+    const prev=i>0?waves[i-1].fav:null;
+    const d=prev!==null?(w.fav-prev):null;
+    return `<div class="trow">
+      <span class="tmeta" style="min-width:110px">${esc(w.date||'—')}</span>
+      <span class="tt">Wave ${i+1}${w.note?' — '+esc(w.note):''}</span>
+      <span class="tmeta">${(+w.sample||0).toLocaleString('en-IN')} sampled</span>
+      <span class="st" style="background:var(--navy);color:#fff;min-width:90px">${w.fav}% fav</span>
+      <span class="tmeta" style="min-width:70px;${d===null?'':d>=0?'color:#1E7A3C;font-weight:700':'color:#B3261E;font-weight:700'}">${d===null?'baseline':(d>=0?'▲ +':'▼ ')+d+' pt'}</span>
+      <button class="tdel" onclick="gpDelWave('${l.id}',${i})" title="Delete wave">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No survey waves yet — record the first wave to set the baseline.</p>';
+  return `<div class="card"><h2>📡 Ground Pulse</h2>
+    <div class="sub">Voter intelligence: what the ground is saying, and whether the leader's standing is moving.</div>
+    <h3 style="font-size:19px;color:var(--navy);margin-bottom:8px">Live Issues</h3>
+    ${irows}
+    <div class="taddgrid" style="grid-template-columns:2fr 1fr auto">
+      <div><label>New Issue *</label><input id="gp_issue" placeholder="e.g. Drinking water shortage in northern hoblis"></div>
+      <div><label>Intensity</label><select id="gp_sev">${[1,2,3,4,5].map(s=>`<option value="${s}" ${s===3?'selected':''}>${SEV_LABEL[s]}</option>`).join('')}</select></div>
+      <div><button class="btn btn-navy btn-sm" onclick="gpAddIssue('${l.id}')">+ Add</button></div>
+    </div>
+    <h3 style="font-size:19px;color:var(--navy);margin:24px 0 8px">Survey Waves — Leader Favorability</h3>
+    ${wrows}
+    <div class="taddgrid" style="grid-template-columns:1fr 1fr 1fr 2fr auto">
+      <div><label>Date</label><input id="gp_date" type="date"></div>
+      <div><label>Sample Size</label><input id="gp_sample" type="number" min="0"></div>
+      <div><label>Favorability % *</label><input id="gp_fav" type="number" min="0" max="100"></div>
+      <div><label>Note</label><input id="gp_note" placeholder="e.g. post-rally wave, 40 booths"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="gpAddWave('${l.id}')">+ Add</button></div>
+    </div>
+  </div>`;
+}
+function gpAddIssue(id){
+  const l=db.get(id); const n=$('#gp_issue').value.trim();
+  if(!n) return alert('Issue description is required.');
+  l.gp=l.gp||{issues:[],waves:[]};
+  l.gp.issues.push({n,sev:+$('#gp_sev').value||3});
+  db.upsert(l); viewLeader(id);
+}
+function gpCycleSev(id,i){ const l=db.get(id); const it=l.gp.issues[i]; it.sev=it.sev%5+1; db.upsert(l); viewLeader(id); }
+function gpDelIssue(id,i){ const l=db.get(id); l.gp.issues.splice(i,1); db.upsert(l); viewLeader(id); }
+function gpAddWave(id){
+  const l=db.get(id); const fav=$('#gp_fav').value;
+  if(fav==='') return alert('Favorability % is required.');
+  l.gp=l.gp||{issues:[],waves:[]};
+  l.gp.waves.push({date:$('#gp_date').value,sample:+$('#gp_sample').value||0,fav:Math.max(0,Math.min(100,+fav)),note:$('#gp_note').value.trim()});
+  db.upsert(l); viewLeader(id);
+}
+function gpDelWave(id,i){ const l=db.get(id); l.gp.waves.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: Candidate Blueprint (cb) ---------- */
+/* l.cb = {slogan, positioning, strengths:[], vulns:[], promises:[{p,status}]} */
+const P_ST=['announced','working','delivered'];
+const P_LABEL={announced:'Announced',working:'In Motion',delivered:'Delivered ✓'};
+const P_CLS={announced:'pending',working:'progress',delivered:'done'};
+function renderCB(l){
+  if(!l.services.includes('cb')) return '';
+  const c=l.cb||{strengths:[],vulns:[],promises:[]};
+  const list=(arr,key,empty)=>arr.length?arr.map((s,i)=>`<div class="trow">
+      <span class="tt">${esc(s)}</span>
+      <button class="tdel" onclick="cbDelItem('${l.id}','${key}',${i})" title="Delete">✕</button>
+    </div>`).join('') : `<p style="color:var(--muted)">${empty}</p>`;
+  const prows=c.promises.length?c.promises.map((p,i)=>`<div class="trow">
+      <button class="st ${P_CLS[p.status]}" onclick="cbCyclePromise('${l.id}',${i})" title="Click to change status">${P_LABEL[p.status]}</button>
+      <span class="tt">${esc(p.p)}</span>
+      <button class="tdel" onclick="cbDelPromise('${l.id}',${i})" title="Delete promise">✕</button>
+    </div>`).join('') : '<p style="color:var(--muted)">No promises recorded — every public commitment goes here, so nothing is forgotten after the applause.</p>';
+  return `<div class="card"><h2>🧭 Candidate Blueprint</h2>
+    <div class="sub">The leader's positioning: one story, told consistently, with promises tracked to delivery.</div>
+    <div class="fgrid">
+      <div><label>One-Line Promise / Slogan</label><input id="cb_slogan" value="${esc(c.slogan||'')}" placeholder="e.g. ನಮ್ಮ ನೀರು, ನಮ್ಮ ಹಕ್ಕು — water for every farm by 2029" onchange="cbSetField('${l.id}','slogan',this.value)"></div>
+      <div><label>Positioning Statement</label><input id="cb_pos" value="${esc(c.positioning||'')}" placeholder="Who the leader is, for whom, against what" onchange="cbSetField('${l.id}','positioning',this.value)"></div>
+    </div>
+    <div class="fgrid" style="margin-top:20px">
+      <div><h3 style="font-size:19px;color:#1E7A3C;margin-bottom:8px">Strengths — amplify</h3>
+        ${list(c.strengths,'strengths','What works for the leader — record it.')}
+        <div class="taddgrid" style="grid-template-columns:1fr auto">
+          <div><input id="cb_str" placeholder="e.g. Cross-community acceptability"></div>
+          <div><button class="btn btn-navy btn-sm" onclick="cbAddItem('${l.id}','strengths','cb_str')">+ Add</button></div>
+        </div>
+      </div>
+      <div><h3 style="font-size:19px;color:#B3261E;margin-bottom:8px">Vulnerabilities — inoculate</h3>
+        ${list(c.vulns,'vulns','What rivals will attack — name it before they do.')}
+        <div class="taddgrid" style="grid-template-columns:1fr auto">
+          <div><input id="cb_vul" placeholder="e.g. Seen as outsider in southern hoblis"></div>
+          <div><button class="btn btn-navy btn-sm" onclick="cbAddItem('${l.id}','vulns','cb_vul')">+ Add</button></div>
+        </div>
+      </div>
+    </div>
+    <h3 style="font-size:19px;color:var(--navy);margin:24px 0 8px">Promise Book</h3>
+    ${prows}
+    <div class="taddgrid" style="grid-template-columns:1fr auto">
+      <div><label>New Promise *</label><input id="cb_prom" placeholder="e.g. Ring road land compensation settled within 6 months"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="cbAddPromise('${l.id}')">+ Add</button></div>
+    </div>
+  </div>`;
+}
+function cbInit(l){ l.cb=l.cb||{strengths:[],vulns:[],promises:[]}; return l.cb; }
+function cbSetField(id,k,v){ const l=db.get(id); cbInit(l)[k]=v.trim(); db.upsert(l); }
+function cbAddItem(id,key,inp){
+  const l=db.get(id); const v=$('#'+inp).value.trim();
+  if(!v) return alert('Text is required.');
+  cbInit(l)[key].push(v); db.upsert(l); viewLeader(id);
+}
+function cbDelItem(id,key,i){ const l=db.get(id); l.cb[key].splice(i,1); db.upsert(l); viewLeader(id); }
+function cbAddPromise(id){
+  const l=db.get(id); const p=$('#cb_prom').value.trim();
+  if(!p) return alert('Promise text is required.');
+  cbInit(l).promises.push({p,status:'announced'}); db.upsert(l); viewLeader(id);
+}
+function cbCyclePromise(id,i){ const l=db.get(id); const p=l.cb.promises[i]; p.status=P_ST[(P_ST.indexOf(p.status)+1)%P_ST.length]; db.upsert(l); viewLeader(id); }
+function cbDelPromise(id,i){ const l=db.get(id); l.cb.promises.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
