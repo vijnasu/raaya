@@ -433,6 +433,7 @@ function viewLeader(id){
    ${renderDM(l)}
    ${renderWR(l)}
    ${renderGC(l)}
+   ${renderAS(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -1015,6 +1016,65 @@ function gcCycle(id,i){
   db.upsert(l); viewLeader(id);
 }
 function gcDel(id,i){ const l=db.get(id); l.gc.griev.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: Astro-Strategy Advisory (as) ---------- */
+/* l.as = {mu:[{date,time,purpose,note,conf}]} — guidance from RAAYA Muhurta framework */
+const AS_GUIDE={
+ 'Nomination filing':   ['Mon / Wed / Thu','Rohini, Hasta, Anuradha','Rahu kala, Amavasya'],
+ 'Campaign launch':     ['Thu / Fri','Pushya, Ashwini, Hasta','Eclipse day, Bhadra'],
+ 'Office opening':      ['Mon / Thu / Fri','Rohini, Uttara traya, Pushya','Tue; Rahu kala'],
+ 'Manifesto release':   ['Wed / Thu','Hasta, Chitra, Shravana','Amavasya, Bhadra'],
+ 'First public rally':  ['Thu / Fri / Sun','Pushya, Ashwini, Revati','Rahu kala, eclipse'],
+ 'Yatra / tour start':  ['Thu / Fri','Ashwini, Mrigashira, Revati','Tue; Ashtami'],
+ 'Big announcement':    ['Wed / Thu','Hasta, Shravana, Pushya','Amavasya, Bhadra'],
+ 'Victory thanksgiving':['Any auspicious day','Pushya, Rohini','Rahu kala'],
+ 'Other':               ['Confirm with astrologer','—','Rahu kala']};
+function renderAS(l){
+  if(!l.services.includes('as')) return '';
+  const M=(l.as&&l.as.mu)||[];
+  const today=new Date().toISOString().slice(0,10);
+  const upcoming=M.filter(m=>m.date>=today).sort((a,b)=>a.date.localeCompare(b.date));
+  const unconf=upcoming.filter(m=>!m.conf).length;
+  const next=upcoming[0];
+  const daysTo=d=>Math.round((new Date(d)-new Date(today))/864e5);
+  const summary=M.length?`<div class="btotals">
+      <div class="cbox" style="background:var(--navy)"><div class="n" style="color:var(--gold);font-size:22px">${next?next.date+' · '+(next.time||'—'):'—'}</div><div class="l" style="color:var(--ice)">NEXT MUHURTA${next?' · '+esc(next.purpose).toUpperCase()+' · IN '+daysTo(next.date)+'D':''}</div></div>
+      <div class="cbox"><div class="n">${upcoming.length}</div><div class="l">UPCOMING WINDOWS</div></div>
+      <div class="cbox ${unconf?'hot':''}"><div class="n">${unconf}</div><div class="l">AWAITING ASTROLOGER</div></div>
+    </div>`:'';
+  const rows=M.length?[...M].sort((a,b)=>a.date.localeCompare(b.date)).map(m=>{
+    const i=M.indexOf(m); const past=m.date<today;
+    const g=AS_GUIDE[m.purpose]||AS_GUIDE['Other'];
+    return `<div class="trow ${past?'done':''}">
+      <button class="st ${m.conf?'done':'pending'}" onclick="asToggle('${l.id}',${i})" title="Toggle astrologer confirmation">${m.conf?'Confirmed ✓':'Awaiting ☐'}</button>
+      <span class="tt"><b>${esc(m.date)}${m.time?' · '+esc(m.time):''}</b> — ${esc(m.purpose)}${m.note?' · '+esc(m.note):''}
+        <br><span style="font-size:16px;color:var(--muted)">Days: ${g[0]} · Nakshatra: ${g[1]} · Avoid: ${g[2]}</span></span>
+      <span class="tmeta" style="min-width:90px">${past?'passed':'in '+daysTo(m.date)+'d'}</span>
+      <button class="tdel" onclick="asDel('${l.id}',${i})" title="Delete">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No muhurta windows fixed yet — add the milestone dates as the astrologer confirms them.</p>';
+  return `<div class="card"><h2>🕉 Astro-Strategy Advisory</h2>
+    <div class="sub">Muhurta windows for campaign milestones — launches, filings, announcements.</div>
+    ${summary}${rows}
+    <div class="taddgrid" style="grid-template-columns:1fr 1fr 1.2fr 1fr auto">
+      <div><label>Date *</label><input id="as_date" type="date"></div>
+      <div><label>Time Window</label><input id="as_time" placeholder="e.g. 10:05–11:20"></div>
+      <div><label>Milestone</label><select id="as_purpose">${Object.keys(AS_GUIDE).map(p=>`<option>${p}</option>`).join('')}</select></div>
+      <div><label>Note</label><input id="as_note" placeholder="e.g. per Guruji, after Pushya entry"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="asAdd('${l.id}')">+ Add</button></div>
+    </div>
+    <div class="tlnote">Advisory layer only: windows are an illustrative framework, NOT computed from a live panchanga or the leader's chart — every date must be confirmed by a qualified astrologer, and timing must never conflict with operational needs or ECI rules.</div>
+  </div>`;
+}
+function asAdd(id){
+  const l=db.get(id); const date=$('#as_date').value;
+  if(!date) return alert('Date is required.');
+  l.as=l.as||{mu:[]};
+  l.as.mu.push({date,time:$('#as_time').value.trim(),purpose:$('#as_purpose').value,note:$('#as_note').value.trim(),conf:false});
+  db.upsert(l); viewLeader(id);
+}
+function asToggle(id,i){ const l=db.get(id); l.as.mu[i].conf=!l.as.mu[i].conf; db.upsert(l); viewLeader(id); }
+function asDel(id,i){ const l=db.get(id); l.as.mu.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
