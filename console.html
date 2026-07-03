@@ -429,6 +429,7 @@ function viewLeader(id){
    ${renderTracker(l)}
    ${renderGP(l)}
    ${renderCB(l)}
+   ${renderCC(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -765,6 +766,59 @@ function cbAddPromise(id){
 }
 function cbCyclePromise(id,i){ const l=db.get(id); const p=l.cb.promises[i]; p.status=P_ST[(P_ST.indexOf(p.status)+1)%P_ST.length]; db.upsert(l); viewLeader(id); }
 function cbDelPromise(id,i){ const l=db.get(id); l.cb.promises.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: Campaign Command (cc) ---------- */
+/* l.cc = {team:[{name,role,zone,phone,last}]} — last = ISO date of last check-in */
+const CC_ROLES=['Campaign Manager','Zone In-charge','Block In-charge','Booth Coordinator','Volunteer Lead','Social Media Head','Logistics','Legal / ECI Compliance'];
+function ccDays(last){
+  if(!last) return null;
+  const t=new Date(); t.setHours(0,0,0,0);
+  return Math.round((t-new Date(last))/864e5);
+}
+function renderCC(l){
+  if(!l.services.includes('cc')) return '';
+  const team=(l.cc&&l.cc.team)||[];
+  const silent=team.filter(m=>{const d=ccDays(m.last); return d===null||d>2;}).length;
+  const today=new Date().toISOString().slice(0,10);
+  const checkedToday=team.filter(m=>m.last===today).length;
+  const summary=team.length?`<div class="btotals">
+      <div class="cbox"><div class="n">${team.length}</div><div class="l">FIELD TEAM</div></div>
+      <div class="cbox"><div class="n">${new Set(team.map(m=>m.zone).filter(Boolean)).size}</div><div class="l">ZONES COVERED</div></div>
+      <div class="cbox"><div class="n" style="color:#1E7A3C">${checkedToday}</div><div class="l">REPORTED TODAY</div></div>
+      <div class="cbox ${silent?'hot':''}"><div class="n">${silent}</div><div class="l">SILENT &gt;2 DAYS</div></div>
+    </div>`:'';
+  const rows=team.length?[...team].map((m,i)=>{
+    const d=ccDays(m.last);
+    const st=d===null?['No report yet','#B3261E']:d===0?['Reported today','#1E7A3C']:d<=2?[d+'d ago','var(--muted)']:[d+'d silent ⚠','#B3261E'];
+    return `<div class="trow ${d!==null&&d===0?'':''}">
+      <span class="tt"><b>${esc(m.name)}</b> — ${esc(m.role)}${m.zone?` <span class="svctag">${esc(m.zone)}</span>`:''}</span>
+      <span class="tmeta">${esc(m.phone||'')}</span>
+      <span class="tmeta" style="min-width:130px;color:${st[1]};font-weight:700">${st[0]}</span>
+      <button class="st progress" onclick="ccCheckin('${l.id}',${i})" title="Mark today's report received">✓ Check-in</button>
+      <button class="tdel" onclick="ccDel('${l.id}',${i})" title="Remove member">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No field team yet — a campaign without named owners per zone is a rally, not a machine.</p>';
+  return `<div class="card"><h2>🎖 Campaign Command</h2>
+    <div class="sub">Field organisation: who owns which zone, and whether reports are coming in daily.</div>
+    ${summary}${rows}
+    <div class="taddgrid" style="grid-template-columns:1.5fr 1fr 1fr 1fr auto">
+      <div><label>Name *</label><input id="cc_name" placeholder="e.g. Mahesh Patil"></div>
+      <div><label>Role</label><select id="cc_role">${CC_ROLES.map(r=>`<option>${r}</option>`).join('')}</select></div>
+      <div><label>Zone / Block</label><input id="cc_zone" placeholder="e.g. Ugar block"></div>
+      <div><label>Phone</label><input id="cc_phone"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="ccAdd('${l.id}')">+ Add</button></div>
+    </div>
+  </div>`;
+}
+function ccAdd(id){
+  const l=db.get(id); const name=$('#cc_name').value.trim();
+  if(!name) return alert('Member name is required.');
+  l.cc=l.cc||{team:[]};
+  l.cc.team.push({name,role:$('#cc_role').value,zone:$('#cc_zone').value.trim(),phone:$('#cc_phone').value.trim(),last:''});
+  db.upsert(l); viewLeader(id);
+}
+function ccCheckin(id,i){ const l=db.get(id); l.cc.team[i].last=new Date().toISOString().slice(0,10); db.upsert(l); viewLeader(id); }
+function ccDel(id,i){ const l=db.get(id); l.cc.team.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
