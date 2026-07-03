@@ -432,6 +432,7 @@ function viewLeader(id){
    ${renderCC(l)}
    ${renderDM(l)}
    ${renderWR(l)}
+   ${renderGC(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -953,6 +954,67 @@ function wrResolve(id,i){
   db.upsert(l); viewLeader(id);
 }
 function wrDel(id,i){ const l=db.get(id); l.wr.incidents.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: Governance Connect (gc) ---------- */
+/* l.gc = {griev:[{t,who,loc,cat,rec,status open|working|resolved,note}]} */
+const GC_CATS=['Water','Roads','Electricity','Health','Education','Ration / Pension','Land / Revenue','Jobs / Livelihood','Other'];
+const GC_ST=['open','working','resolved'];
+const GC_LABEL={open:'Open',working:'In Progress',resolved:'Resolved ✓'};
+const GC_CLS={open:'pending',working:'progress',resolved:'done'};
+function gcDaysOpen(g){
+  const end=g.status==='resolved'?new Date(g.done||g.rec):new Date();
+  return Math.max(0,Math.round((end-new Date(g.rec))/864e5));
+}
+function renderGC(l){
+  if(!l.services.includes('gc')) return '';
+  const G=(l.gc&&l.gc.griev)||[];
+  const open=G.filter(g=>g.status!=='resolved');
+  const res=G.filter(g=>g.status==='resolved');
+  const rate=G.length?Math.round(res.length/G.length*100):0;
+  const oldest=open.length?Math.max(...open.map(gcDaysOpen)):0;
+  const summary=G.length?`<div class="btotals">
+      <div class="cbox ${open.length?'hot':''}"><div class="n">${open.length}</div><div class="l">PENDING</div></div>
+      <div class="cbox"><div class="n" style="color:#1E7A3C">${res.length}</div><div class="l">RESOLVED</div></div>
+      <div class="cbox ${rate<50&&G.length>3?'hot':''}"><div class="n">${rate}%</div><div class="l">RESOLUTION RATE</div></div>
+      <div class="cbox ${oldest>30?'hot':''}"><div class="n">${oldest}d</div><div class="l">OLDEST PENDING</div></div>
+    </div>`:'';
+  const rows=G.length?[...G].sort((a,b)=>(a.status==='resolved'?1:0)-(b.status==='resolved'?1:0)||gcDaysOpen(b)-gcDaysOpen(a)).map(g=>{
+    const i=G.indexOf(g); const d=gcDaysOpen(g);
+    return `<div class="trow ${g.status==='resolved'?'done':''}">
+      <button class="st ${GC_CLS[g.status]}" onclick="gcCycle('${l.id}',${i})" title="Click to move forward">${GC_LABEL[g.status]}</button>
+      <span class="tt">${esc(g.t)} <span class="svctag">${esc(g.cat)}</span>${g.who||g.loc?`<br><span style="font-size:16px;color:var(--muted)">${esc(g.who||'')}${g.who&&g.loc?' · ':''}${esc(g.loc||'')}</span>`:''}${g.note?`<br><span style="font-size:16px;color:#1E7A3C">↳ ${esc(g.note)}</span>`:''}</span>
+      <span class="tmeta" style="min-width:110px;${g.status!=='resolved'&&d>30?'color:#B3261E;font-weight:700':''}">${g.status==='resolved'?'closed in '+d+'d':d+'d pending'}</span>
+      <button class="tdel" onclick="gcDel('${l.id}',${i})" title="Delete">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No grievances registered. Every request taken at a janata darshan or camp belongs here — the resolved list becomes the governance story.</p>';
+  return `<div class="card"><h2>🤝 Governance Connect</h2>
+    <div class="sub">Citizen grievances in, visible delivery out. Trust is built one resolved complaint at a time.</div>
+    ${summary}${rows}
+    <div class="taddgrid" style="grid-template-columns:2fr 1fr 1fr 1fr auto">
+      <div><label>Grievance *</label><input id="gc_t" placeholder="e.g. Borewell dry for 3 weeks, tanker irregular"></div>
+      <div><label>Citizen / Group</label><input id="gc_who" placeholder="e.g. Basavraj, farmers' sangha"></div>
+      <div><label>Village / Ward</label><input id="gc_loc" placeholder="e.g. Shirguppi"></div>
+      <div><label>Category</label><select id="gc_cat">${GC_CATS.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div><button class="btn btn-navy btn-sm" onclick="gcAdd('${l.id}')">+ Register</button></div>
+    </div>
+  </div>`;
+}
+function gcAdd(id){
+  const l=db.get(id); const t=$('#gc_t').value.trim();
+  if(!t) return alert('Grievance description is required.');
+  l.gc=l.gc||{griev:[]};
+  l.gc.griev.push({t,who:$('#gc_who').value.trim(),loc:$('#gc_loc').value.trim(),cat:$('#gc_cat').value,
+    rec:new Date().toISOString().slice(0,10),status:'open',note:''});
+  db.upsert(l); viewLeader(id);
+}
+function gcCycle(id,i){
+  const l=db.get(id); const g=l.gc.griev[i];
+  g.status=GC_ST[(GC_ST.indexOf(g.status)+1)%GC_ST.length];
+  if(g.status==='resolved'){ g.done=new Date().toISOString().slice(0,10); g.note=(prompt('How was it resolved? (shown as the delivery record)')||'').trim(); }
+  else { g.done=''; g.note=''; }
+  db.upsert(l); viewLeader(id);
+}
+function gcDel(id,i){ const l=db.get(id); l.gc.griev.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
