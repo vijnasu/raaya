@@ -407,6 +407,7 @@ function viewLeader(id){
       <div><h2>${esc(l.name)} <span class="badge g">${esc(elLabel(l.electionType))}</span></h2>
       <div class="sub">${esc(l.constituency)}, ${esc(l.state)} · ${esc(l.status)} · Election: ${esc(l.electionDate||'TBD')}</div></div>
       <div>
+        <button class="btn btn-gold btn-sm" onclick="shareDigest('${l.id}')">📲 WhatsApp Digest</button>
         <button class="btn btn-gold btn-sm" onclick="window.print()">🖨 Print Report / PDF</button>
         <button class="btn btn-navy btn-sm" onclick="editLeader('${l.id}')">Edit Details</button>
         <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="renderHome()">← All Leaders</button>
@@ -605,13 +606,18 @@ function renderBooths(l){
   const vot=k=>B.filter(b=>b.lean===k).reduce((s,b)=>s+(+b.voters||0),0);
   const totV=B.reduce((s,b)=>s+(+b.voters||0),0);
   const noIC=B.filter(b=>!b.incharge).length;
+  const totHH=B.reduce((s,b)=>s+(+b.hh||0),0);
+  const totHV=B.reduce((s,b)=>s+(+b.hv||0),0);
+  const covPct=totHH?Math.min(100,Math.round(totHV/totHH*100)):0;
 
   const summary = B.length?`<div class="btotals">
     <div class="cbox"><div class="n">${B.length}</div><div class="l">BOOTHS MAPPED · ${totV.toLocaleString('en-IN')} VOTERS</div></div>
     <div class="cbox"><div class="n" style="color:#1E7A3C">${cnt('strong')}</div><div class="l">STRONG · ${vot('strong').toLocaleString('en-IN')} VOTERS</div></div>
     <div class="cbox"><div class="n" style="color:var(--gold)">${cnt('swing')}</div><div class="l">SWING — WIN HERE · ${vot('swing').toLocaleString('en-IN')} VOTERS</div></div>
     <div class="cbox"><div class="n" style="color:#B3261E">${cnt('weak')}</div><div class="l">WEAK · ${vot('weak').toLocaleString('en-IN')} VOTERS</div></div>
+    ${totHH?`<div class="cbox"><div class="n">${covPct}%</div><div class="l">DOOR-TO-DOOR · ${totHV.toLocaleString('en-IN')} OF ${totHH.toLocaleString('en-IN')} HOUSEHOLDS</div></div>`:''}
   </div>
+  ${totHH?`<div class="prog" title="Outreach coverage"><div style="width:${covPct}%"></div></div>`:''}
   <div class="boothbar" title="Strong ${cnt('strong')} · Swing ${cnt('swing')} · Weak ${cnt('weak')}">
     ${cnt('strong')?`<div style="flex:${cnt('strong')};background:#1E7A3C"></div>`:''}
     ${cnt('swing')?`<div style="flex:${cnt('swing')};background:var(--gold)"></div>`:''}
@@ -624,6 +630,13 @@ function renderBooths(l){
       <button class="lean ${b.lean}" onclick="cycleLean('${l.id}',${i})" title="Click to reclassify">${LEAN_LABEL[b.lean]}</button>
       <span class="tt"><b>#${esc(b.no)}</b> ${esc(b.name)}</span>
       <span class="tmeta">${(+b.voters||0).toLocaleString('en-IN')} voters</span>
+      <span class="tmeta ${(+b.hh&&+b.hv>=+b.hh)?'':''}" title="Households visited / total">🚪
+        <input class="binp" type="number" min="0" style="width:78px" placeholder="visited" value="${b.hv??''}"
+          onchange="setBoothNum('${l.id}',${i},'hv',this.value)"> /
+        <input class="binp" type="number" min="0" style="width:78px" placeholder="homes" value="${b.hh??''}"
+          onchange="setBoothNum('${l.id}',${i},'hh',this.value)">
+        ${+b.hh?`<b style="color:${+b.hv>=+b.hh?'#1E7A3C':'var(--muted)'}">${Math.min(100,Math.round((+b.hv||0)/+b.hh*100))}%</b>`:''}
+      </span>
       <input class="binp" style="max-width:200px" placeholder="In-charge name" value="${esc(b.incharge||'')}"
         onchange="setBooth('${l.id}',${i},'incharge',this.value)">
       <button class="tdel" onclick="delBooth('${l.id}',${i})" title="Delete booth">✕</button>
@@ -653,6 +666,7 @@ function addBooth(id){
 function cycleLean(id,i){ const l=db.get(id); const b=l.booths[i];
   b.lean=LEANS[(LEANS.indexOf(b.lean)+1)%LEANS.length]; db.upsert(l); viewLeader(id); }
 function setBooth(id,i,k,v){ const l=db.get(id); l.booths[i][k]=v.trim(); db.upsert(l); }
+function setBoothNum(id,i,k,v){ const l=db.get(id); l.booths[i][k]=+v||0; db.upsert(l); viewLeader(id); }
 function delBooth(id,i){ const l=db.get(id); l.booths.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Step 4: Budget ---------- */
@@ -723,6 +737,35 @@ function suggestBud(id){
   if(!l.budget.some(b=>b.auto==='cont')){ l.budget.push({desc:'Contingency & rapid response reserve',svc:'',planned:Math.round(band*.1/totalShare),actual:0,auto:'cont'}); added++; }
   db.upsert(l); viewLeader(id);
   if(!added) alert('Suggested allocation already generated.');
+}
+
+/* ---------- WhatsApp daily digest ---------- */
+function shareDigest(id){
+  const l=db.get(id); if(!l) return;
+  const today=new Date(); today.setHours(0,0,0,0);
+  const iso=today.toISOString().slice(0,10);
+  const e=l.electionDate?new Date(l.electionDate):null;
+  const days=(e&&!isNaN(e)&&e>today)?Math.ceil((e-today)/864e5):null;
+  const T=l.tasks||[];
+  const overdue=T.filter(t=>t.due&&t.due<iso&&t.status!=='done');
+  const dueToday=T.filter(t=>t.due===iso&&t.status!=='done');
+  const inProg=T.filter(t=>t.status==='progress');
+  const done=T.filter(t=>t.status==='done').length;
+  const B=l.budget||[];
+  const planned=B.reduce((s,b)=>s+(+b.planned||0),0), actual=B.reduce((s,b)=>s+(+b.actual||0),0);
+  const BO=l.booths||[];
+  const hh=BO.reduce((s,b)=>s+(+b.hh||0),0), hv=BO.reduce((s,b)=>s+(+b.hv||0),0);
+  const li=(arr,cap)=>arr.slice(0,cap).map(t=>`  • ${t.title}${t.owner?' — '+t.owner:''}`).join('\n')+(arr.length>cap?`\n  …and ${arr.length-cap} more`:'');
+  let msg=`*RAAYA DAILY BRIEF* — ${today.toLocaleDateString('en-IN',{day:'numeric',month:'short',year:'numeric'})}\n`
+   +`*${l.name}* · ${l.constituency}${days!==null?`\n🗳 *${days} days to poll*`:''}\n`
+   +`\n✅ Progress: ${done}/${T.length} tasks done`
+   +(overdue.length?`\n\n🔴 *OVERDUE (${overdue.length})*\n${li(overdue,5)}`:'')
+   +(dueToday.length?`\n\n🟡 *DUE TODAY (${dueToday.length})*\n${li(dueToday,5)}`:'')
+   +(inProg.length?`\n\n🔵 *IN PROGRESS (${inProg.length})*\n${li(inProg,3)}`:'')
+   +(hh?`\n\n🚪 Door-to-door: ${hv.toLocaleString('en-IN')}/${hh.toLocaleString('en-IN')} households (${Math.min(100,Math.round(hv/hh*100))}%)`:'')
+   +(planned?`\n💰 Budget: ${inr(actual)} spent of ${inr(planned)}`:'')
+   +`\n\n_RAAYA — People. Perception. Power._`;
+  window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank');
 }
 
 /* ---------- Team Access (roles/permissions, cloud mode) ---------- */
