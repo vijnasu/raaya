@@ -149,6 +149,7 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 <script src="assets/ka_mlc.js"></script>
 <script src="assets/ka_dossier.js"></script>
 <script src="assets/gba2026.js"></script>
+<script src="assets/ka_demo.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
@@ -453,6 +454,24 @@ function renderIntel(l){
     </div>
     <div class="tlnote">Head-to-head vote split: <b>${esc(k.wp)}</b> ${wpct}% (navy) vs <b>${esc(k.rp)}</b> ${100-wpct}% (gold). Flip target: ${Math.ceil(k.m/2+1).toLocaleString('en-IN')}+ voters need to switch.</div>
     ${renderDossier(k,l)}
+    ${renderDemo(k,l)}
+  </div>`;
+}
+/* Demographic profile — Census 2011 district stats + GBA ward aggregates for Bengaluru Urban ACs */
+function renderDemo(k,l){
+  if(l.electionType!=='vidhan_sabha'||!window.KA_DEMO) return '';
+  const d=KA_DEMO[k.c]; if(!d) return '';
+  return `<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px">
+    <h3 style="font-size:19px;color:var(--navy);margin-bottom:10px">👥 Demographics — ${esc(d.d)} district</h3>
+    <div class="btotals">
+      ${d.acpop?`<div class="cbox"><div class="n">${d.acpop.toLocaleString('en-IN')}</div><div class="l">SEAT POPULATION (${d.wards} GBA WARDS)</div></div>
+      <div class="cbox"><div class="n">${d.scst}%</div><div class="l">SC + ST SHARE (SEAT-LEVEL)</div></div>`:''}
+      <div class="cbox"><div class="n">${(d.pop/1e5).toFixed(1)} L</div><div class="l">DISTRICT POPULATION</div></div>
+      <div class="cbox"><div class="n">${d.lit}%</div><div class="l">LITERACY</div></div>
+      <div class="cbox"><div class="n">${d.sex}</div><div class="l">SEX RATIO (F/1000 M)</div></div>
+      <div class="cbox"><div class="n">${d.dens.toLocaleString('en-IN')}</div><div class="l">DENSITY /KM²</div></div>
+    </div>
+    <div class="tlnote">Census 2011${d.acpop?'; seat-level figures aggregated from GBA 2026 ward data':' — district-level; seat-level detail available for Bengaluru Urban seats'}. Use as baseline for Ground Pulse survey design.</div>
   </div>`;
 }
 /* Rival Dossier — ADR/MyNeta affidavit analysis of the sitting MLA (Vidhan Sabha only) */
