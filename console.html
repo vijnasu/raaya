@@ -431,6 +431,7 @@ function viewLeader(id){
    ${renderCB(l)}
    ${renderCC(l)}
    ${renderDM(l)}
+   ${renderWR(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -895,6 +896,63 @@ function dmAddPost(id){
 }
 function dmCyclePost(id,i){ const l=db.get(id); const p=l.dm.posts[i]; p.status=p.status==='planned'?'posted':'planned'; if(p.status==='posted'&&!p.date)p.date=new Date().toISOString().slice(0,10); db.upsert(l); viewLeader(id); }
 function dmDelPost(id,i){ const l=db.get(id); l.dm.posts.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: War Room (wr) ---------- */
+/* l.wr = {incidents:[{t,src,sev(1-3),opened,closed,resp}]} — 2-hour response target */
+const WR_SEV={1:['Watch','var(--muted)'],2:['Serious','#D9662B'],3:['CRISIS','#B3261E']};
+const WR_SLA_MS=2*3600e3;
+function wrAge(inc){ return (inc.closed?new Date(inc.closed):new Date())-new Date(inc.opened); }
+function wrFmt(ms){ const h=Math.floor(ms/3600e3), m=Math.round(ms%3600e3/60e3); return h?`${h}h ${m}m`:`${m}m`; }
+function renderWR(l){
+  if(!l.services.includes('wr')) return '';
+  const inc=(l.wr&&l.wr.incidents)||[];
+  const open=inc.filter(x=>!x.closed);
+  const breach=open.filter(x=>wrAge(x)>WR_SLA_MS);
+  const closed=inc.filter(x=>x.closed);
+  const avg=closed.length?closed.reduce((s,x)=>s+wrAge(x),0)/closed.length:0;
+  const summary=inc.length?`<div class="btotals">
+      <div class="cbox ${open.length?'hot':''}"><div class="n">${open.length}</div><div class="l">OPEN NOW</div></div>
+      <div class="cbox ${breach.length?'hot':''}"><div class="n">${breach.length}</div><div class="l">BREACHING 2-HOUR TARGET</div></div>
+      <div class="cbox"><div class="n" style="color:#1E7A3C">${closed.length}</div><div class="l">RESOLVED</div></div>
+      <div class="cbox"><div class="n">${closed.length?wrFmt(avg):'—'}</div><div class="l">AVG RESPONSE TIME</div></div>
+    </div>`:'';
+  const rows=inc.length?[...inc].sort((a,b)=>(a.closed?1:0)-(b.closed?1:0)||b.sev-a.sev).map(x=>{
+    const i=inc.indexOf(x);
+    const age=wrAge(x); const late=!x.closed&&age>WR_SLA_MS;
+    const [sl,sc]=WR_SEV[x.sev];
+    return `<div class="trow ${x.closed?'done':''}">
+      <span class="st" style="background:${x.closed?'var(--mist)':sc};color:${x.closed?'var(--muted)':'#fff'};min-width:96px">${sl}</span>
+      <span class="tt">${esc(x.t)}${x.src?` <span class="svctag">${esc(x.src)}</span>`:''}${x.resp?`<br><span style="font-size:16px;color:var(--muted)">↳ ${esc(x.resp)}</span>`:''}</span>
+      <span class="tmeta" style="min-width:130px;${late?'color:#B3261E;font-weight:700':''}">${x.closed?'closed in '+wrFmt(age):(late?'⏱ OPEN '+wrFmt(age)+' ⚠':'⏱ open '+wrFmt(age))}</span>
+      ${x.closed?'':`<button class="st done" onclick="wrResolve('${l.id}',${i})">✓ Resolve</button>`}
+      <button class="tdel" onclick="wrDel('${l.id}',${i})" title="Delete">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No incidents logged. When a rumour starts, the clock starts — log it the moment it surfaces.</p>';
+  return `<div class="card"><h2>🚨 War Room</h2>
+    <div class="sub">Rumours, attacks, incidents — logged, clocked, answered. Target: response within 2 hours.</div>
+    ${summary}${rows}
+    <div class="taddgrid" style="grid-template-columns:2fr 1fr 1fr auto">
+      <div><label>Incident / Rumour *</label><input id="wr_t" placeholder="e.g. Fake letter circulating about ticket denial"></div>
+      <div><label>Where Spotted</label><input id="wr_src" placeholder="e.g. WhatsApp / local TV / rival rally"></div>
+      <div><label>Severity</label><select id="wr_sev"><option value="1">Watch</option><option value="2" selected>Serious</option><option value="3">CRISIS</option></select></div>
+      <div><button class="btn btn-navy btn-sm" onclick="wrAdd('${l.id}')">+ Log</button></div>
+    </div>
+  </div>`;
+}
+function wrAdd(id){
+  const l=db.get(id); const t=$('#wr_t').value.trim();
+  if(!t) return alert('Incident description is required.');
+  l.wr=l.wr||{incidents:[]};
+  l.wr.incidents.push({t,src:$('#wr_src').value.trim(),sev:+$('#wr_sev').value||2,opened:new Date().toISOString(),closed:'',resp:''});
+  db.upsert(l); viewLeader(id);
+}
+function wrResolve(id,i){
+  const resp=prompt('What was the response? (one line for the record)')||'';
+  const l=db.get(id); const x=l.wr.incidents[i];
+  x.closed=new Date().toISOString(); x.resp=resp.trim();
+  db.upsert(l); viewLeader(id);
+}
+function wrDel(id,i){ const l=db.get(id); l.wr.incidents.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
