@@ -148,6 +148,7 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 <script src="assets/ka_ls2024.js"></script>
 <script src="assets/ka_mlc.js"></script>
 <script src="assets/ka_dossier.js"></script>
+<script src="assets/gba2026.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
@@ -822,17 +823,27 @@ let DIR = {set:'mla', q:'', party:'', sort:'m'};
 function renderDirectory(){
   if(cloudConfigured() && !CLOUD) return renderLogin('Sign in to access the leader directory.');
   window.__rerender = renderDirectory;
-  const isMLC = DIR.set==='mlc';
-  const data = isMLC ? window.KA_MLC : DIR.set==='mp' ? window.KA_LS2024 : window.KA2023;
-  const parties = [...new Set(data.flatMap(k=>isMLC?[k.wp]:[k.wp,k.rp]))].sort();
+  const isMLC = DIR.set==='mlc', isGBA = DIR.set==='gba';
+  const data = isGBA ? window.GBA2026 : isMLC ? window.KA_MLC : DIR.set==='mp' ? window.KA_LS2024 : window.KA2023;
+  const parties = isGBA ? [...new Set(data.map(k=>k.resv))].sort()
+    : [...new Set(data.flatMap(k=>isMLC?[k.wp]:[k.wp,k.rp]))].sort();
   let rows = data.filter(k=>{
     const q=DIR.q.toLowerCase();
+    if(isGBA) return (!q || (k.name+' '+k.corp+' '+k.ac+' '+k.resv).toLowerCase().includes(q))
+        && (!DIR.party || k.resv===DIR.party);
     return (!q || (k.c+' '+k.w+' '+(k.r||'')+' '+(k.cat||'')).toLowerCase().includes(q))
         && (!DIR.party || k.wp===DIR.party || k.rp===DIR.party);
   });
-  rows.sort((isMLC||DIR.sort==='c')?(a,b)=>a.c.localeCompare(b.c)||a.w.localeCompare(b.w):(a,b)=>a.m-b.m);
+  rows.sort(isGBA?(a,b)=>a.corp.localeCompare(b.corp)||a.no-b.no
+    :(isMLC||DIR.sort==='c')?(a,b)=>a.c.localeCompare(b.c)||a.w.localeCompare(b.w):(a,b)=>a.m-b.m);
   const cls=k=>{const p=k.m/k.wv*100; return p<8?['MARGINAL','#B3261E']:p<20?['COMPETITIVE','var(--gold)']:['STRONGHOLD','#1E7A3C'];};
   const body = rows.map((k,ri)=>{
+    if(isGBA){ const scst=k.pop?Math.round((k.sc+k.st)/k.pop*100):0;
+      return `<tr>
+      <td><b>Ward ${k.no} — ${esc(k.name)}</b><br><span style="font-size:15px;color:var(--muted)">${esc(k.corp)} Corporation · AC: ${esc(k.ac)}</span></td>
+      <td>${k.pop.toLocaleString('en-IN')} pop.<br><span style="font-size:15px;color:var(--muted)">SC+ST ${scst}%</span></td>
+      <td><span class="badge ${/Women/.test(k.resv)?'g':''}">${esc(k.resv)}</span></td>
+      <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('gba','${ri}')">Onboard →</button></td></tr>`; }
     if(isMLC) return `<tr>
       <td><b>${esc(k.c)}</b><br><span style="font-size:15px;color:var(--muted)">${esc(k.cat)}</span></td>
       <td>${esc(k.w)}<br><span class="badge g">${esc(k.wp)}</span></td>
@@ -850,28 +861,39 @@ function renderDirectory(){
   window.__dirRows = rows; /* index lookup for MLC onboarding */
   $('#app').innerHTML = `<div class="card">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:start">
-      <div><h2>Leader Directory</h2><div class="sub">${rows.length} of ${data.length} seats · ${isMLC?'current MLCs by category (indirect polls — no margin data)':`sitting ${DIR.set==='mp'?'MPs (2024)':'MLAs (2023)'} and their runners-up${DIR.sort==='c'?'':' · most winnable seats first'}`}.</div></div>
+      <div><h2>Leader Directory</h2><div class="sub">${rows.length} of ${data.length} ${isGBA?'wards · Greater Bengaluru Authority 2026 — new corporations, no incumbents. Reservation decides who can contest each ward.':`seats · ${isMLC?'current MLCs by category (indirect polls — no margin data)':`sitting ${DIR.set==='mp'?'MPs (2024)':'MLAs (2023)'} and their runners-up${DIR.sort==='c'?'':' · most winnable seats first'}`}.`}</div></div>
       <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="renderHome()">← Console Home</button>
     </div>
     <div class="taddgrid" style="grid-template-columns:1fr 1fr 1fr 1fr;margin-bottom:18px">
       <div><label>House</label><select onchange="DIR.set=this.value;renderDirectory()">
         <option value="mla" ${DIR.set==='mla'?'selected':''}>Vidhan Sabha — 224 MLAs</option>
         <option value="mp" ${DIR.set==='mp'?'selected':''}>Lok Sabha — 28 MPs</option>
-        <option value="mlc" ${DIR.set==='mlc'?'selected':''}>Legislative Council — 75 MLCs</option></select></div>
+        <option value="mlc" ${DIR.set==='mlc'?'selected':''}>Legislative Council — 75 MLCs</option>
+        <option value="gba" ${DIR.set==='gba'?'selected':''}>GBA 2026 — 369 wards</option></select></div>
       <div><label>Search</label><input value="${esc(DIR.q)}" placeholder="Constituency or leader name"
         oninput="DIR.q=this.value;clearTimeout(DIR.t);DIR.t=setTimeout(renderDirectory,300)"></div>
-      <div><label>Party</label><select onchange="DIR.party=this.value;renderDirectory()">
-        <option value="">All parties</option>${parties.map(p=>`<option ${DIR.party===p?'selected':''}>${p}</option>`).join('')}</select></div>
-      <div><label>Sort by</label><select ${isMLC?'disabled':''} onchange="DIR.sort=this.value;renderDirectory()">
-        ${isMLC?'<option>Category / name</option>':`<option value="m" ${DIR.sort==='m'?'selected':''}>Margin (marginal first)</option>
+      <div><label>${isGBA?'Reservation':'Party'}</label><select onchange="DIR.party=this.value;renderDirectory()">
+        <option value="">${isGBA?'All categories':'All parties'}</option>${parties.map(p=>`<option ${DIR.party===p?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div><label>Sort by</label><select ${(isMLC||isGBA)?'disabled':''} onchange="DIR.sort=this.value;renderDirectory()">
+        ${isGBA?'<option>Corporation / ward no.</option>':isMLC?'<option>Category / name</option>':`<option value="m" ${DIR.sort==='m'?'selected':''}>Margin (marginal first)</option>
         <option value="c" ${DIR.sort==='c'?'selected':''}>Constituency name</option>`}</select></div>
     </div>
-    <table class="btab"><thead><tr><th>Constituency</th><th>Winner</th><th>Runner-up</th><th></th></tr></thead>
+    <table class="btab"><thead><tr>${isGBA?'<th>Ward</th><th>Population</th><th>Reservation</th><th></th>'
+      :'<th>Constituency</th><th>Winner</th><th>Runner-up</th><th></th>'}</tr></thead>
     <tbody>${body||'<tr><td colspan="4" style="color:var(--muted)">No matches.</td></tr>'}</tbody></table>
   </div>`;
   window.scrollTo(0,0);
 }
 function onboardFromDir(set,cname){
+  if(set==='gba'){
+    const k=window.__dirRows[+cname]; if(!k) return;
+    const scst=k.pop?Math.round((k.sc+k.st)/k.pop*100):0;
+    W = {step:0, data:{services:[], electionType:'municipal', status:'Exploring / undecided',
+      state:'Karnataka', constituency:`Ward ${k.no} — ${k.name}, Bengaluru ${k.corp} Corporation`,
+      mix:'Mostly urban', voters:String(k.pop),
+      rivals:`GBA 2026 ward. Reservation: ${k.resv} — candidate must qualify. Population ${k.pop.toLocaleString('en-IN')} (SC+ST ${scst}%). Falls under ${k.ac} assembly seat (AC ${k.acno}). New corporation — no incumbent; ward-level influencers and ex-BBMP corporator networks are the real rivals.`}};
+    renderWizard(); return;
+  }
   if(set==='mlc'){
     const k=window.__dirRows[+cname]; if(!k) return;
     W = {step:0, data:{services:[], electionType:'mlc',
