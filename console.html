@@ -430,6 +430,7 @@ function viewLeader(id){
    ${renderGP(l)}
    ${renderCB(l)}
    ${renderCC(l)}
+   ${renderDM(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -819,6 +820,81 @@ function ccAdd(id){
 }
 function ccCheckin(id,i){ const l=db.get(id); l.cc.team[i].last=new Date().toISOString().slice(0,10); db.upsert(l); viewLeader(id); }
 function ccDel(id,i){ const l=db.get(id); l.cc.team.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: Digital Mandate (dm) ---------- */
+/* l.dm = {channels:[{ch,handle,followers,prev}], posts:[{date,title,ch,status planned|posted}]} */
+const DM_CH=['WhatsApp Network','Facebook','Instagram','YouTube','X (Twitter)','ShareChat / Koo','Telegram'];
+function renderDM(l){
+  if(!l.services.includes('dm')) return '';
+  const d=l.dm||{channels:[],posts:[]};
+  const reach=d.channels.reduce((s,c)=>s+(+c.followers||0),0);
+  const today=new Date().toISOString().slice(0,10);
+  const overdue=d.posts.filter(p=>p.status==='planned'&&p.date&&p.date<today).length;
+  const week=new Date(Date.now()-7*864e5).toISOString().slice(0,10);
+  const posted7=d.posts.filter(p=>p.status==='posted'&&p.date>=week).length;
+  const summary=(d.channels.length||d.posts.length)?`<div class="btotals">
+      <div class="cbox"><div class="n">${reach.toLocaleString('en-IN')}</div><div class="l">TOTAL REACH (FOLLOWERS / MEMBERS)</div></div>
+      <div class="cbox"><div class="n">${d.channels.length}</div><div class="l">CHANNELS LIVE</div></div>
+      <div class="cbox"><div class="n" style="color:#1E7A3C">${posted7}</div><div class="l">POSTED LAST 7 DAYS</div></div>
+      <div class="cbox ${overdue?'hot':''}"><div class="n">${overdue}</div><div class="l">CONTENT OVERDUE</div></div>
+    </div>`:'';
+  const crows=d.channels.length?d.channels.map((c,i)=>{
+    const g=(+c.followers||0)-(+c.prev||0);
+    return `<div class="trow">
+      <span class="tt"><b>${esc(c.ch)}</b>${c.handle?' — '+esc(c.handle):''}</span>
+      <span class="tmeta">Reach: <input class="binp" type="number" min="0" style="width:110px" value="${+c.followers||0}"
+        onchange="dmSetReach('${l.id}',${i},this.value)" title="Update follower/member count"></span>
+      <span class="tmeta" style="min-width:110px;${g>0?'color:#1E7A3C;font-weight:700':g<0?'color:#B3261E;font-weight:700':''}">${c.prev===undefined?'new':(g>=0?'▲ +':'▼ ')+g.toLocaleString('en-IN')}</span>
+      <button class="tdel" onclick="dmDelCh('${l.id}',${i})" title="Remove channel">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No channels yet — the WhatsApp network is usually the first and most decisive one.</p>';
+  const prows=d.posts.length?[...d.posts].sort((a,b)=>(a.date||'').localeCompare(b.date||'')).map(p=>{
+    const i=d.posts.indexOf(p);
+    const late=p.status==='planned'&&p.date&&p.date<today;
+    return `<div class="trow ${p.status==='posted'?'done':''}">
+      <button class="st ${p.status==='posted'?'done':'pending'}" onclick="dmCyclePost('${l.id}',${i})">${p.status==='posted'?'Posted ✓':'Planned'}</button>
+      <span class="tt">${esc(p.title)} <span class="svctag">${esc(p.ch)}</span></span>
+      <span class="tmeta ${late?'late':''}">${p.date?(late?'⚠ ':'')+p.date:''}</span>
+      <button class="tdel" onclick="dmDelPost('${l.id}',${i})" title="Delete">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No content planned — silence online is surrender online.</p>';
+  return `<div class="card"><h2>📱 Digital Mandate</h2>
+    <div class="sub">Channels, reach growth, and a content calendar that keeps the feed alive.</div>
+    ${summary}
+    <h3 style="font-size:19px;color:var(--navy);margin-bottom:8px">Channels</h3>
+    ${crows}
+    <div class="taddgrid" style="grid-template-columns:1fr 1fr 1fr auto">
+      <div><label>Channel</label><select id="dm_ch">${DM_CH.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div><label>Handle / Group Name</label><input id="dm_handle" placeholder="e.g. @kagwad4dev"></div>
+      <div><label>Current Reach</label><input id="dm_fol" type="number" min="0"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="dmAddCh('${l.id}')">+ Add</button></div>
+    </div>
+    <h3 style="font-size:19px;color:var(--navy);margin:24px 0 8px">Content Calendar</h3>
+    ${prows}
+    <div class="taddgrid" style="grid-template-columns:2fr 1fr 1fr auto">
+      <div><label>Content *</label><input id="dm_title" placeholder="e.g. Reel: sugarcane arrears — farmer voices"></div>
+      <div><label>Channel</label><select id="dm_pch">${DM_CH.map(c=>`<option>${c}</option>`).join('')}</select></div>
+      <div><label>Date</label><input id="dm_date" type="date"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="dmAddPost('${l.id}')">+ Add</button></div>
+    </div>
+  </div>`;
+}
+function dmInit(l){ l.dm=l.dm||{channels:[],posts:[]}; return l.dm; }
+function dmAddCh(id){
+  const l=db.get(id); const ch=$('#dm_ch').value;
+  dmInit(l).channels.push({ch,handle:$('#dm_handle').value.trim(),followers:+$('#dm_fol').value||0});
+  db.upsert(l); viewLeader(id);
+}
+function dmSetReach(id,i,v){ const l=db.get(id); const c=l.dm.channels[i]; c.prev=+c.followers||0; c.followers=+v||0; db.upsert(l); viewLeader(id); }
+function dmDelCh(id,i){ const l=db.get(id); l.dm.channels.splice(i,1); db.upsert(l); viewLeader(id); }
+function dmAddPost(id){
+  const l=db.get(id); const t=$('#dm_title').value.trim();
+  if(!t) return alert('Content description is required.');
+  dmInit(l).posts.push({date:$('#dm_date').value,title:t,ch:$('#dm_pch').value,status:'planned'});
+  db.upsert(l); viewLeader(id);
+}
+function dmCyclePost(id,i){ const l=db.get(id); const p=l.dm.posts[i]; p.status=p.status==='planned'?'posted':'planned'; if(p.status==='posted'&&!p.date)p.date=new Date().toISOString().slice(0,10); db.upsert(l); viewLeader(id); }
+function dmDelPost(id,i){ const l=db.get(id); l.dm.posts.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
