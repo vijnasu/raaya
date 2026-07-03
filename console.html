@@ -150,6 +150,7 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 <script src="assets/ka_dossier.js"></script>
 <script src="assets/gba2026.js"></script>
 <script src="assets/ka_demo.js"></script>
+<script src="assets/gba_voters.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
@@ -839,6 +840,29 @@ function revokeAccess(id,i){
 
 /* ---------- Leader Directory (auth-gated) ---------- */
 let DIR = {set:'mla', q:'', party:'', sort:'m'};
+/* Estimated 2026 ward voters = ward 2011 pop × (corp 2026 voters / corp 2011 pop). Labelled "est." in UI. */
+let _corpPop=null;
+function estWardVoters(k){
+  if(!window.GBA_VOTERS||!k.pop) return 0;
+  if(!_corpPop){ _corpPop={}; (window.GBA2026||[]).forEach(w=>_corpPop[w.corp]=(_corpPop[w.corp]||0)+w.pop); }
+  const cv=GBA_VOTERS.corps[k.corp]; const cp=_corpPop[k.corp];
+  if(!cv||!cp) return 0;
+  return Math.round(k.pop*cv.total/cp/10)*10;
+}
+function gbaElectorateBanner(){
+  const V=window.GBA_VOTERS; if(!V) return '';
+  const t=V.total, lk=n=>(n/1e5).toFixed(2)+' L';
+  const bars=['Central','North','East','South','West'].map(c=>{const d=V.corps[c];
+    return `<div class="cbox"><div class="n" style="font-size:22px">${lk(d.total)}</div><div class="l">${c.toUpperCase()} · ${d.wards} WARDS${d.ns?' *':''}</div></div>`;}).join('');
+  return `<div class="card"><h2>GBA 2026 Electorate</h2>
+    <div class="sub">Official final electoral rolls, ${esc(V.asof)} — ${t.total.toLocaleString('en-IN')} voters across ${t.wards} wards &amp; ${t.booths.toLocaleString('en-IN')} polling stations.</div>
+    <div class="btotals">
+      <div class="cbox" style="background:var(--navy)"><div class="n" style="color:var(--gold)">${lk(t.total)}</div><div class="l" style="color:var(--ice)">TOTAL VOTERS</div></div>
+      ${bars}
+    </div>
+    <div class="tlnote">M ${t.m.toLocaleString('en-IN')} · F ${t.f.toLocaleString('en-IN')} · Others ${t.o.toLocaleString('en-IN')}. Corporation figures are official &amp; checksum-verified; <b>*</b> North/South (both 72 wards) assigned by population. Ward rows show a 2026 <i>estimate</i> (2011 census scaled by corporation voter growth) — validated within ~5% of mean against 73 wards recovered from the official ward-count scan, but treat as approximate: true ward electorate isn't published in machine-readable form (only per-station PDFs).</div>
+  </div>`;
+}
 function renderDirectory(){
   if(cloudConfigured() && !CLOUD) return renderLogin('Sign in to access the leader directory.');
   window.__rerender = renderDirectory;
@@ -858,9 +882,10 @@ function renderDirectory(){
   const cls=k=>{const p=k.m/k.wv*100; return p<8?['MARGINAL','#B3261E']:p<20?['COMPETITIVE','var(--gold)']:['STRONGHOLD','#1E7A3C'];};
   const body = rows.map((k,ri)=>{
     if(isGBA){ const scst=k.pop?Math.round((k.sc+k.st)/k.pop*100):0;
+      const ev=estWardVoters(k);
       return `<tr>
       <td><b>Ward ${k.no} — ${esc(k.name)}</b><br><span style="font-size:15px;color:var(--muted)">${esc(k.corp)} Corporation · AC: ${esc(k.ac)}</span></td>
-      <td>${k.pop.toLocaleString('en-IN')} pop.<br><span style="font-size:15px;color:var(--muted)">SC+ST ${scst}%</span></td>
+      <td>${ev?'~'+ev.toLocaleString('en-IN')+' voters':k.pop.toLocaleString('en-IN')+' pop.'}<br><span style="font-size:15px;color:var(--muted)">${ev?'est. 2026 · ':''}SC+ST ${scst}%</span></td>
       <td><span class="badge ${/Women/.test(k.resv)?'g':''}">${esc(k.resv)}</span></td>
       <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('gba','${ri}')">Onboard →</button></td></tr>`; }
     if(isMLC) return `<tr>
@@ -878,7 +903,7 @@ function renderDirectory(){
     <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('${DIR.set}','${esc(k.c).replace(/'/g,"\\'")}')">Onboard →</button></td>
   </tr>`;}).join('');
   window.__dirRows = rows; /* index lookup for MLC onboarding */
-  $('#app').innerHTML = `<div class="card">
+  $('#app').innerHTML = `${isGBA?gbaElectorateBanner():''}<div class="card">
     <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;align-items:start">
       <div><h2>Leader Directory</h2><div class="sub">${rows.length} of ${data.length} ${isGBA?'wards · Greater Bengaluru Authority 2026 — new corporations, no incumbents. Reservation decides who can contest each ward.':`seats · ${isMLC?'current MLCs by category (indirect polls — no margin data)':`sitting ${DIR.set==='mp'?'MPs (2024)':'MLAs (2023)'} and their runners-up${DIR.sort==='c'?'':' · most winnable seats first'}`}.`}</div></div>
       <button class="btn btn-ghost btn-sm" style="color:var(--navy);border-color:var(--line)" onclick="renderHome()">← Console Home</button>
@@ -907,10 +932,11 @@ function onboardFromDir(set,cname){
   if(set==='gba'){
     const k=window.__dirRows[+cname]; if(!k) return;
     const scst=k.pop?Math.round((k.sc+k.st)/k.pop*100):0;
+    const ev=estWardVoters(k);
     W = {step:0, data:{services:[], electionType:'municipal', status:'Exploring / undecided',
       state:'Karnataka', constituency:`Ward ${k.no} — ${k.name}, Bengaluru ${k.corp} Corporation`,
-      mix:'Mostly urban', voters:String(k.pop),
-      rivals:`GBA 2026 ward. Reservation: ${k.resv} — candidate must qualify. Population ${k.pop.toLocaleString('en-IN')} (SC+ST ${scst}%). Falls under ${k.ac} assembly seat (AC ${k.acno}). New corporation — no incumbent; ward-level influencers and ex-BBMP corporator networks are the real rivals.`}};
+      mix:'Mostly urban', voters:String(ev||k.pop),
+      rivals:`GBA 2026 ward. Reservation: ${k.resv} — candidate must qualify. ${ev?'Est. ~'+ev.toLocaleString('en-IN')+' voters (2026, scaled from 2011 census)':'Population '+k.pop.toLocaleString('en-IN')} (SC+ST ${scst}%). ${k.corp} Corporation had ${(GBA_VOTERS.corps[k.corp].total/1e5).toFixed(1)}L voters at March-2026 rolls. Falls under ${k.ac} assembly seat (AC ${k.acno}). New corporation — no incumbent; ward-level influencers and ex-BBMP corporator networks are the real rivals.`}};
     renderWizard(); return;
   }
   if(set==='mlc'){
