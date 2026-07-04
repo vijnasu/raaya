@@ -22,17 +22,30 @@ local server is nicer: `python -m http.server 8437 --directory raaya-website`.
 `console.html` is a single-file app. Features:
 - **Onboarding wizard** — leader profile, election target (Lok Sabha …
   Gram Panchayat), constituency, RAAYA services, budget band.
-- **Live constituency data** — picking Vidhan Sabha or Lok Sabha offers all
-  Karnataka seats with auto-filled sitting MLA/MP, runner-up, party and margin.
+- **Live constituency data** — Vidhan Sabha (224 seats, 2023), Lok Sabha
+  (28, 2024) and MLC (75) auto-fill; GBA 2026 has all 369 wards with
+  reservations and electorate figures.
+- **Constituency intelligence** — 2023/2024 result, head-to-head split,
+  **Winnability Index** (transparent 100-pt score over 2013/2018/2023 +
+  LS-2024 segment leads), **Rival Dossier** (ADR affidavit data: criminal
+  cases, assets, education) and census demographics.
 - **Campaign plan** — 7 dated phases generated from the election date, actions
   filtered by engaged services; importable into the tracker as tasks.
 - **Execution tracker** — tasks with owner, due date, status, overdue alerts.
-- **Booth management** — strong/swing/weak classification, in-charge, voters.
+- **Eight service modules**, each shown only if engaged: Ground Pulse
+  (issues + survey waves), Candidate Blueprint (positioning + promise book),
+  Campaign Command (field roster + daily check-ins), Digital Mandate
+  (channels + content calendar), War Room (incident log with 2-hour response
+  clock), Governance Connect (grievance register with resolution rate),
+  Astro-Strategy (muhurta book with astrologer sign-off), Media Relations
+  (press contacts + coverage tone).
+- **Booth management** — strong/swing/weak classification, in-charge,
+  door-to-door household coverage.
 - **Budget** — planned vs actual per line, band-based suggested allocation.
-- **Leader Directory** — browse/search all 252 scraped seats, one-click
-  onboarding of any incumbent as a prospect (sign-in required).
-- **Print Report / PDF** — clean confidential campaign brief per leader.
-- **Command dashboard** + JSON export/import backup.
+- **Leader Directory** — browse/search all scraped seats and wards, sortable
+  by margin or Winnability Index, one-click onboarding (sign-in required).
+- **Print Report / PDF** — confidential campaign brief with section picker.
+- **WhatsApp daily digest**, **command dashboard**, JSON export/import backup.
 
 ### Storage: local vs cloud
 Out of the box the Console stores data in the browser (`localStorage`) —
@@ -99,7 +112,13 @@ raaya-website/
     ├── console-i18n.js   # Console UI translations (en/hi/kn)
     ├── firebase-config.js# cloud keys (placeholders = local-only mode)
     ├── ka2023.js         # 224 KA assembly seats — 2023 results (ECI/Wikipedia)
-    └── ka_ls2024.js      # 28 KA Lok Sabha seats — 2024 results (ECI/Wikipedia)
+    ├── ka_ls2024.js      # 28 KA Lok Sabha seats — 2024 results
+    ├── ka_mlc.js         # 75 current MLCs by category
+    ├── ka_history.js     # 2013/2018/2023 + LS-2024 segment leads (Winnability)
+    ├── ka_dossier.js     # ADR affidavit data for 196 sitting MLAs
+    ├── ka_demo.js        # Census 2011 demographics per constituency
+    ├── gba2026.js        # GBA 2026 — 369 wards, reservations, population
+    └── gba_voters.js     # GBA 2026 electorate (official corp-level rolls)
 ```
 
 ## To publish
