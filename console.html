@@ -434,6 +434,7 @@ function viewLeader(id){
    ${renderWR(l)}
    ${renderGC(l)}
    ${renderAS(l)}
+   ${renderMR(l)}
    ${renderBooths(l)}
    ${renderBudget(l)}
    ${renderAccess(l)}`;
@@ -1075,6 +1076,84 @@ function asAdd(id){
 }
 function asToggle(id,i){ const l=db.get(id); l.as.mu[i].conf=!l.as.mu[i].conf; db.upsert(l); viewLeader(id); }
 function asDel(id,i){ const l=db.get(id); l.as.mu.splice(i,1); db.upsert(l); viewLeader(id); }
+
+/* ---------- Service Module: Media Relations (mr) ---------- */
+/* l.mr = {contacts:[{name,outlet,beat,phone,rel}], cov:[{date,outlet,title,tone}]} */
+const MR_REL=['warm','neutral','hostile'];
+const MR_RELSTYLE={warm:['Warm','#1E7A3C'],neutral:['Neutral','var(--muted)'],hostile:['Hostile','#B3261E']};
+const MR_TONE=['pos','neu','neg'];
+const MR_TONESTYLE={pos:['Positive','#1E7A3C'],neu:['Neutral','var(--muted)'],neg:['Negative','#B3261E']};
+function renderMR(l){
+  if(!l.services.includes('mr')) return '';
+  const m=l.mr||{contacts:[],cov:[]};
+  const warm=m.contacts.filter(c=>c.rel==='warm').length;
+  const hostile=m.contacts.filter(c=>c.rel==='hostile').length;
+  const d30=new Date(Date.now()-30*864e5).toISOString().slice(0,10);
+  const recent=m.cov.filter(c=>c.date>=d30);
+  const net=recent.filter(c=>c.tone==='pos').length-recent.filter(c=>c.tone==='neg').length;
+  const summary=(m.contacts.length||m.cov.length)?`<div class="btotals">
+      <div class="cbox"><div class="n">${m.contacts.length}</div><div class="l">PRESS CONTACTS · ${warm} WARM${hostile?` · <span style="color:#B3261E">${hostile} HOSTILE</span>`:''}</div></div>
+      <div class="cbox"><div class="n">${recent.length}</div><div class="l">COVERAGE LAST 30 DAYS</div></div>
+      <div class="cbox ${net<0?'hot':''}"><div class="n" style="color:${net>0?'#1E7A3C':net<0?'#B3261E':'var(--navy)'}">${net>0?'+':''}${net}</div><div class="l">TONE NET (POS − NEG, 30D)</div></div>
+    </div>`:'';
+  const crows=m.contacts.length?[...m.contacts].sort((a,b)=>MR_REL.indexOf(a.rel)-MR_REL.indexOf(b.rel)).map(c=>{
+    const i=m.contacts.indexOf(c); const [rl,rc]=MR_RELSTYLE[c.rel];
+    return `<div class="trow">
+      <button class="st" style="background:${rc};color:#fff;min-width:96px" onclick="mrCycleRel('${l.id}',${i})" title="Click to change relationship">${rl}</button>
+      <span class="tt"><b>${esc(c.name)}</b> — ${esc(c.outlet)}${c.beat?` <span class="svctag">${esc(c.beat)}</span>`:''}</span>
+      <span class="tmeta">${esc(c.phone||'')}</span>
+      <button class="tdel" onclick="mrDelContact('${l.id}',${i})" title="Remove contact">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No press contacts yet — the relationship is built before the story is needed.</p>';
+  const vrows=m.cov.length?[...m.cov].sort((a,b)=>(b.date||'').localeCompare(a.date||'')).map(c=>{
+    const i=m.cov.indexOf(c); const [tl,tc]=MR_TONESTYLE[c.tone];
+    return `<div class="trow">
+      <button class="st" style="background:${tc};color:#fff;min-width:96px" onclick="mrCycleTone('${l.id}',${i})" title="Click to reclassify tone">${tl}</button>
+      <span class="tt">${esc(c.title)} <span class="svctag">${esc(c.outlet)}</span></span>
+      <span class="tmeta">${esc(c.date||'')}</span>
+      <button class="tdel" onclick="mrDelCov('${l.id}',${i})" title="Delete">✕</button>
+    </div>`;}).join('')
+    :'<p style="color:var(--muted)">No coverage logged — every mention counts, good or bad.</p>';
+  return `<div class="card"><h2>📰 Media Relations</h2>
+    <div class="sub">The press book: who covers us, how they lean, and what got written.</div>
+    ${summary}
+    <h3 style="font-size:19px;color:var(--navy);margin-bottom:8px">Press Contacts</h3>
+    ${crows}
+    <div class="taddgrid" style="grid-template-columns:1fr 1fr 1fr 1fr auto">
+      <div><label>Name *</label><input id="mr_name" placeholder="e.g. Ramesh, bureau chief"></div>
+      <div><label>Outlet</label><input id="mr_outlet" placeholder="e.g. Vijaya Karnataka"></div>
+      <div><label>Beat</label><input id="mr_beat" placeholder="e.g. district politics"></div>
+      <div><label>Phone</label><input id="mr_phone"></div>
+      <div><button class="btn btn-navy btn-sm" onclick="mrAddContact('${l.id}')">+ Add</button></div>
+    </div>
+    <h3 style="font-size:19px;color:var(--navy);margin:24px 0 8px">Coverage Log</h3>
+    ${vrows}
+    <div class="taddgrid" style="grid-template-columns:2fr 1fr 1fr 1fr auto">
+      <div><label>Headline / Mention *</label><input id="mr_title" placeholder="e.g. Leader flags sugarcane arrears in Assembly"></div>
+      <div><label>Outlet</label><input id="mr_covoutlet" placeholder="e.g. Prajavani"></div>
+      <div><label>Date</label><input id="mr_date" type="date"></div>
+      <div><label>Tone</label><select id="mr_tone"><option value="pos">Positive</option><option value="neu" selected>Neutral</option><option value="neg">Negative</option></select></div>
+      <div><button class="btn btn-navy btn-sm" onclick="mrAddCov('${l.id}')">+ Log</button></div>
+    </div>
+  </div>`;
+}
+function mrInit(l){ l.mr=l.mr||{contacts:[],cov:[]}; return l.mr; }
+function mrAddContact(id){
+  const l=db.get(id); const name=$('#mr_name').value.trim();
+  if(!name) return alert('Contact name is required.');
+  mrInit(l).contacts.push({name,outlet:$('#mr_outlet').value.trim(),beat:$('#mr_beat').value.trim(),phone:$('#mr_phone').value.trim(),rel:'neutral'});
+  db.upsert(l); viewLeader(id);
+}
+function mrCycleRel(id,i){ const l=db.get(id); const c=l.mr.contacts[i]; c.rel=MR_REL[(MR_REL.indexOf(c.rel)+1)%MR_REL.length]; db.upsert(l); viewLeader(id); }
+function mrDelContact(id,i){ const l=db.get(id); l.mr.contacts.splice(i,1); db.upsert(l); viewLeader(id); }
+function mrAddCov(id){
+  const l=db.get(id); const t=$('#mr_title').value.trim();
+  if(!t) return alert('Headline is required.');
+  mrInit(l).cov.push({title:t,outlet:$('#mr_covoutlet').value.trim(),date:$('#mr_date').value||new Date().toISOString().slice(0,10),tone:$('#mr_tone').value});
+  db.upsert(l); viewLeader(id);
+}
+function mrCycleTone(id,i){ const l=db.get(id); const c=l.mr.cov[i]; c.tone=MR_TONE[(MR_TONE.indexOf(c.tone)+1)%MR_TONE.length]; db.upsert(l); viewLeader(id); }
+function mrDelCov(id,i){ const l=db.get(id); l.mr.cov.splice(i,1); db.upsert(l); viewLeader(id); }
 
 /* ---------- Booth-Level Module ---------- */
 /* Booth: {no, name, voters, lean:'strong'|'swing'|'weak', incharge} */
