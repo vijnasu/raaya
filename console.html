@@ -151,6 +151,7 @@ table.btab{width:100%;border-collapse:collapse;font-size:19px;}
 <script src="assets/gba2026.js"></script>
 <script src="assets/ka_demo.js"></script>
 <script src="assets/gba_voters.js"></script>
+<script src="assets/ka_history.js"></script>
 <script>
 /* =============== RAAYA Leader Console — Step 1: Onboarding =============== */
 const DB_KEY = 'raaya_leaders_v1';
@@ -442,6 +443,53 @@ function viewLeader(id){
 }
 function editLeader(id){ const l=db.get(id); W={step:0,data:JSON.parse(JSON.stringify(l))}; renderWizard(); }
 
+/* ---------- Winnability Index (transparent scoring over 2013/2018/2023 + LS 2024) ---------- */
+function winIndex(no){
+  const h=window.KA_HIST&&KA_HIST[no]; if(!h||!h.y23) return null;
+  const mp=y=>y?(y.wv-y.rv)/(y.wv+y.rv)*100:null;  /* two-way margin % */
+  const parts=[]; let score=0;
+  /* 1. Margin thinness (max 40) */
+  const m23=mp(h.y23);
+  const sM=Math.max(0,Math.round(40-m23*2));
+  parts.push(['2023 margin: '+m23.toFixed(1)+'% two-way'+(m23<4?' — razor thin':''),sM,40]); score+=sM;
+  /* 2. Incumbent trend (max 25) */
+  const p=h.y23.wp;
+  const marginFor=y=>!y?null:(y.wp===p?mp(y):(y.rp===p?-mp(y):null));
+  const m18=marginFor(h.y18), m13=marginFor(h.y13);
+  let sT=0, tN='No comparable trend for '+p;
+  if(m18!==null){
+    const d=m23-m18;
+    if(d<0){ sT=Math.min(15,Math.round(-d)); tN=p+' margin fell '+Math.abs(d).toFixed(1)+' pts since 2018'; }
+    else tN=p+' margin grew '+d.toFixed(1)+' pts since 2018';
+    if(m13!==null&&m18<m13&&m23<m18){ sT=Math.min(25,sT+10); tN+=' — sliding two elections straight'; }
+  }
+  parts.push([tN,sT,25]); score+=sT;
+  /* 3. Seat volatility (max 20) */
+  const winners=[h.y13&&h.y13.wp,h.y18&&h.y18.wp,h.y23.wp].filter(Boolean);
+  const uniq=new Set(winners).size;
+  const sV=uniq===3?20:uniq===2?12:0;
+  parts.push(['Winners 2013→18→23: '+winners.join(' → ')+(uniq===1?' — one-party seat':''),sV,20]); score+=sV;
+  /* 4. Lok Sabha 2024 divergence (max 15) */
+  let sL=0, lN='No 2024 LS segment data';
+  if(h.ls){ if(h.ls.lead!==p){ sL=15; lN=h.ls.lead+' led this segment in LS 2024, not sitting party '+p; }
+            else lN=p+' also led the 2024 LS segment — base holding'; }
+  parts.push([lN,sL,15]); score+=sL;
+  const grade=score>=65?['HIGH FLIP POTENTIAL','#B3261E']:score>=45?['CONTESTABLE','var(--gold)']:score>=25?['UPHILL','#6B7A8D']:['FORTRESS','#1E7A3C'];
+  return {score,parts,grade,seat:h.c};
+}
+function renderWin(k,l){
+  if(l.electionType!=='vidhan_sabha') return '';
+  const w=winIndex(k.no); if(!w) return '';
+  return `<div style="border-top:1px solid var(--line);margin-top:16px;padding-top:16px">
+    <h3 style="font-size:19px;color:var(--navy);margin-bottom:10px">📈 Winnability Index — for a challenger
+      <span class="badge" style="background:${w.grade[1]};color:#fff">${w.score}/100 · ${w.grade[0]}</span></h3>
+    ${w.parts.map(p=>`<div class="trow">
+      <span class="st" style="background:${p[1]>=p[2]*0.6?'#B3261E':p[1]>0?'var(--gold)':'var(--mist)'};color:${p[1]>0?'#fff':'var(--muted)'};min-width:86px">+${p[1]} / ${p[2]}</span>
+      <span class="tt">${esc(p[0])}</span></div>`).join('')}
+    <div class="tlnote">Transparent rule-based score — margin thinness (40) + incumbent trend (25) + seat volatility (20) + LS-2024 divergence (15). From the sitting ${esc(k.wp)} MLA's view, safety = ${100-w.score}/100. Data: ECI 2013/2018/2023 + LS 2024 segments.</div>
+  </div>`;
+}
+
 /* ---------- Constituency Intelligence (KA 2023) ---------- */
 function renderIntel(l){
   const k=l.intel; if(!k) return '';
@@ -462,6 +510,7 @@ function renderIntel(l){
       <div style="flex:${k.wv};background:var(--navy)"></div><div style="flex:${k.rv};background:var(--gold)"></div>
     </div>
     <div class="tlnote">Head-to-head vote split: <b>${esc(k.wp)}</b> ${wpct}% (navy) vs <b>${esc(k.rp)}</b> ${100-wpct}% (gold). Flip target: ${Math.ceil(k.m/2+1).toLocaleString('en-IN')}+ voters need to switch.</div>
+    ${renderWin(k,l)}
     ${renderDossier(k,l)}
     ${renderDemo(k,l)}
   </div>`;
@@ -1399,6 +1448,7 @@ function renderDirectory(){
         && (!DIR.party || k.wp===DIR.party || k.rp===DIR.party);
   });
   rows.sort(isGBA?(a,b)=>a.corp.localeCompare(b.corp)||a.no-b.no
+    :(DIR.sort==='w'&&DIR.set==='mla')?(a,b)=>((winIndex(b.no)||{score:0}).score)-((winIndex(a.no)||{score:0}).score)
     :(isMLC||DIR.sort==='c')?(a,b)=>a.c.localeCompare(b.c)||a.w.localeCompare(b.w):(a,b)=>a.m-b.m);
   const cls=k=>{const p=k.m/k.wv*100; return p<8?['MARGINAL','#B3261E']:p<20?['COMPETITIVE','var(--gold)']:['STRONGHOLD','#1E7A3C'];};
   const body = rows.map((k,ri)=>{
@@ -1415,10 +1465,12 @@ function renderDirectory(){
       <td><span style="color:var(--muted)">Term ends ${esc(k.te)}</span></td>
       <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('mlc','${ri}')">Onboard →</button></td></tr>`;
     const [lab,col]=cls(k);
+    const wi=DIR.set==='mla'?winIndex(k.no):null;
+    const wtag=wi?` · <b style="color:${wi.grade[1]}" title="${wi.grade[0]}">WI ${wi.score}</b>`:'';
     const dd=(DIR.set==='mla'&&window.KA_DOSSIER)?KA_DOSSIER[k.c]:null;
     const dinfo=dd?`<br><span style="font-size:15px;color:${dd.cases>0?'#B3261E':'var(--muted)'}">⚖ ${dd.cases} case${dd.cases===1?'':'s'} · ₹${dd.assets>=1e7?(dd.assets/1e7).toFixed(1)+' Cr':(dd.assets/1e5).toFixed(0)+' L'}</span>`:'';
     return `<tr>
-    <td><b>${esc(k.c)}</b><br><span style="font-size:15px;color:var(--muted)">margin ${k.m.toLocaleString('en-IN')} · <b style="color:${col}">${lab}</b></span></td>
+    <td><b>${esc(k.c)}</b><br><span style="font-size:15px;color:var(--muted)">margin ${k.m.toLocaleString('en-IN')} · <b style="color:${col}">${lab}</b>${wtag}</span></td>
     <td>${esc(k.w)}<br><span class="badge g">${esc(k.wp)}</span> <span style="font-size:15px;color:var(--muted)">${k.wv.toLocaleString('en-IN')}</span>${dinfo}</td>
     <td>${esc(k.r)}<br><span class="badge">${esc(k.rp)}</span> <span style="font-size:15px;color:var(--muted)">${k.rv.toLocaleString('en-IN')}</span></td>
     <td><button class="btn btn-navy btn-sm" onclick="onboardFromDir('${DIR.set}','${esc(k.c).replace(/'/g,"\\'")}')">Onboard →</button></td>
@@ -1441,6 +1493,7 @@ function renderDirectory(){
         <option value="">${isGBA?'All categories':'All parties'}</option>${parties.map(p=>`<option ${DIR.party===p?'selected':''}>${p}</option>`).join('')}</select></div>
       <div><label>Sort by</label><select ${(isMLC||isGBA)?'disabled':''} onchange="DIR.sort=this.value;renderDirectory()">
         ${isGBA?'<option>Corporation / ward no.</option>':isMLC?'<option>Category / name</option>':`<option value="m" ${DIR.sort==='m'?'selected':''}>Margin (marginal first)</option>
+        ${DIR.set==='mla'?`<option value="w" ${DIR.sort==='w'?'selected':''}>Winnability Index (highest first)</option>`:''}
         <option value="c" ${DIR.sort==='c'?'selected':''}>Constituency name</option>`}</select></div>
     </div>
     <table class="btab"><thead><tr>${isGBA?'<th>Ward</th><th>Population</th><th>Reservation</th><th></th>'
